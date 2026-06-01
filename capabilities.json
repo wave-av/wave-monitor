@@ -1,0 +1,27 @@
+{
+  "schemaVersion": "1",
+  "repo": "wave-av/wave-monitor",
+  "version": "0.2.0",
+  "lifecycle": "alpha",
+  "planeLayer": 0,
+  "foundationPin": "v1",
+  "maintainers": [{ "team": "operator" }],
+  "exposes": {
+    "renderSurfaces": [{ "kind": "electron-app", "id": "online.wave.monitor" }]
+  },
+  "consumes": {
+    "waveProducts": [
+      { "repo": "wave-av/wave-gateway", "endpoint": "/feed/{slug}" }
+    ],
+    "thirdParty": [
+      { "service": "stun.l.google.com", "licenseGated": false }
+    ],
+    "foundationFrameworks": ["frameworks/protocol-plane", "frameworks/platform-registry"]
+  },
+  "events": {
+    "publishes": [
+      { "topic": "monitor.connection.failed", "transport": "sentry" }
+    ]
+  },
+  "tags": ["operator", "public", "viewer", "webrtc-whep", "on-prem", "build-on-wave"]
+}
