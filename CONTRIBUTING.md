@@ -51,7 +51,7 @@ npm run dist:mac     # build a signed .dmg (needs CI secrets)
 
 ## PR shape
 
-- Branch off `master`. Name: `feat/<short-thing>` or `fix/<short-thing>`.
+- Branch off `main`. Name: `feat/<short-thing>` or `fix/<short-thing>`.
 - One concern per PR. Don't bundle a refactor and a feature.
 - Update `CHANGELOG.md` under the unreleased heading.
 - Self-test: `npm run type-check && npm test && npm run build` must pass.
@@ -64,4 +64,4 @@ Open a private GitHub Security Advisory at
 <https://github.com/wave-av/wave-desktop/security/advisories/new>. Do NOT
 open a public issue.
 
-[wts]: https://github.com/wave-av/wave-foundation/blob/master/frameworks/copywriting/TOUCH_FIRST.md
+[wts]: https://github.com/wave-av/wave-foundation/blob/master/frameworks/copywriting/voice-and-tone.md

@@ -35,9 +35,18 @@ function createWindow(): BrowserWindow {
 
   win.on('ready-to-show', () => win.show());
 
-  // External links open in the OS browser, never in-app.
+  // External links open in the OS browser, never in-app. Validate scheme so
+  // a compromised renderer can't pop `javascript:` / `file:` / app-protocol
+  // URLs through openExternal.
   win.webContents.setWindowOpenHandler(({ url }) => {
-    void shell.openExternal(url);
+    try {
+      const parsed = new URL(url);
+      if (parsed.protocol === 'https:' || parsed.protocol === 'http:') {
+        void shell.openExternal(url);
+      }
+    } catch {
+      // unparseable URL — drop
+    }
     return { action: 'deny' };
   });
 

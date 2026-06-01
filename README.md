@@ -30,7 +30,7 @@ npm run dev
 
 ## Architecture
 
-```
+```text
 ┌── renderer (CSP-locked) ───────────────────┐
 │  React UI:                                  │
 │  ┌─ URL bar + Connect ──────────────────┐  │
@@ -52,7 +52,7 @@ npm run dev
 
 | Wave | Surface | Status |
 |---|---|---|
-| W1 | This scaffold (Electron shell + IPC + meter component) | shipped |
+| W1 | This scaffold (Electron shell + IPC + meter component) | this PR |
 | W2 | Real WebRTC pull from gateway + audio worklet computing peak/RMS @ 20Hz | next |
 | W3 | Multi-window: open N monitors simultaneously, drag between displays | pending |
 | W4 | Always-on-top toggle + transparent-window mode (overlay use) | pending |

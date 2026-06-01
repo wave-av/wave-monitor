@@ -4,24 +4,48 @@ import { Monitor } from './views/Monitor';
 
 export function App(): React.JSX.Element {
   const [state, setState] = useState<MonitorState | null>(null);
+  const [pollError, setPollError] = useState<string | null>(null);
 
   useEffect(() => {
-    void window.wave.monitor.state().then(setState);
-    const interval = setInterval(() => {
-      void window.wave.monitor.state().then(setState);
-    }, 50);
-    return () => clearInterval(interval);
+    let cancelled = false;
+    let polling = false;
+
+    const tick = async (): Promise<void> => {
+      if (polling) return; // skip if previous poll still in flight
+      polling = true;
+      try {
+        const next = await window.wave.monitor.state();
+        if (!cancelled) {
+          setState(next);
+          setPollError(null);
+        }
+      } catch (err) {
+        if (!cancelled) {
+          setPollError(err instanceof Error ? err.message : 'unknown');
+        }
+      } finally {
+        polling = false;
+      }
+    };
+
+    void tick();
+    const interval = setInterval(tick, 50);
+    return () => {
+      cancelled = true;
+      clearInterval(interval);
+    };
   }, []);
 
   return (
     <div className="flex h-screen flex-col">
-      <header
-        className="flex items-center justify-between border-b border-zinc-800 bg-zinc-950 px-4 py-2"
-        style={{ WebkitAppRegion: 'drag' } as React.CSSProperties}
-      >
+      <header className="wave-drag flex items-center justify-between border-b border-zinc-800 bg-zinc-950 px-4 py-2">
         <span className="text-sm font-semibold tracking-wide">WAVE Monitor</span>
         <span className="text-xs text-zinc-500">
-          {state?.connected ? state.feedUrl : 'idle'}
+          {pollError
+            ? `disconnected (${pollError})`
+            : state?.connected
+              ? state.feedUrl
+              : 'idle'}
         </span>
       </header>
       <main className="flex-1 overflow-hidden">

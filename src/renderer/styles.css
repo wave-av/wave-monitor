@@ -2,6 +2,7 @@
 
 :root {
   --wave-accent: oklch(0.78 0.16 217);
+
   color-scheme: dark;
 }
 
@@ -14,4 +15,15 @@ body,
 body {
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+}
+
+/* Electron drag region — applied as a class so the CSP doesn't need
+   'unsafe-inline' for the WebkitAppRegion style attribute. */
+.wave-drag {
+  -webkit-app-region: drag;
+}
+.wave-drag button,
+.wave-drag input,
+.wave-drag a {
+  -webkit-app-region: no-drag;
 }
