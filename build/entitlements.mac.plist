@@ -13,10 +13,9 @@
   <!-- mDNS / NDI discovery + Dante AES67 SAP multicast on the LAN. -->
   <key>com.apple.security.network.server</key>
   <true/>
-  <!-- JIT-compiled JS in the renderer (V8). -->
+  <!-- JIT-compiled JS in the renderer (V8). Electron 34's V8 only needs allow-jit;
+       allow-unsigned-executable-memory expands attack surface for no benefit. -->
   <key>com.apple.security.cs.allow-jit</key>
-  <true/>
-  <key>com.apple.security.cs.allow-unsigned-executable-memory</key>
   <true/>
 </dict>
 </plist>

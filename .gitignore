@@ -15,7 +15,7 @@ release/
 resources/dal/
 resources/ndi/
 resources/ndi-advanced/
-resources/dante-activator
+resources/dante_activator
 *.dylib
 *.so
 *.dll
