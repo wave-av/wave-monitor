@@ -8,10 +8,13 @@
 
 import { app, BrowserWindow, shell } from 'electron';
 import { electronApp, optimizer } from '@electron-toolkit/utils';
+import { pathToFileURL } from 'node:url';
 import { join } from 'node:path';
 import { registerIpcHandlers } from './ipc';
 
 const isDev = !app.isPackaged;
+const RENDERER_ENTRY_FILE = join(__dirname, '../renderer/index.html');
+const RENDERER_ENTRY_URL = pathToFileURL(RENDERER_ENTRY_FILE).href;
 
 function createWindow(): BrowserWindow {
   const win = new BrowserWindow({
@@ -58,11 +61,17 @@ function createWindow(): BrowserWindow {
       /* misconfigured dev URL — ignore */
     }
   }
-  // file:// has no origin; identified by protocol.
+  /*
+   * `file:` URLs have no origin; allowlist exactly the bundled renderer entry.
+   *
+   * cubic-dev-ai PR #1 follow-up review caught that the previous `protocol === 'file:'`
+   * check was too broad — a renderer XSS could navigate to any local file URL. Restrict
+   * to the exact packaged entry; anything else under `file:` is treated as external.
+   */
   const isAllowedInternal = (url: string): boolean => {
     try {
       const parsed = new URL(url);
-      if (parsed.protocol === 'file:') return true;
+      if (parsed.protocol === 'file:') return url === RENDERER_ENTRY_URL;
       return allowedInternalOrigins.has(parsed.origin);
     } catch {
       return false;
@@ -102,7 +111,7 @@ function createWindow(): BrowserWindow {
   if (isDev && process.env['ELECTRON_RENDERER_URL']) {
     void win.loadURL(process.env['ELECTRON_RENDERER_URL']);
   } else {
-    void win.loadFile(join(__dirname, '../renderer/index.html'));
+    void win.loadFile(RENDERER_ENTRY_FILE);
   }
   return win;
 }
