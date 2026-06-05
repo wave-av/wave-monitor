@@ -61,3 +61,8 @@ npm run dev
 
 [MIT](./LICENSE). No vendor-licensed binaries; all rendering uses standard
 WebRTC + Web Audio APIs.
+
+---
+
+<!-- wave-standard-footer -->
+<sub><b><a href="https://wave.online">wave.online</a></b> &nbsp;·&nbsp; <a href="https://docs.wave.online">Docs</a> &nbsp;·&nbsp; <a href="https://dev.wave.online">Developers</a> &nbsp;·&nbsp; <a href="https://agents.wave.online">For agents</a></sub>
