@@ -11,6 +11,7 @@
  * scope. Anything DOM/React adjacent must not be referenced here.
  */
 
+// eslint-disable-next-line @typescript-eslint/triple-slash-reference -- AudioWorkletGlobalScope does not support `import`; triple-slash is required here
 /// <reference path="../audio-worklet-types.d.ts" />
 
 const WINDOW_FRAMES = 2400; // ~50ms at 48kHz
