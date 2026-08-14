@@ -1,6 +1,11 @@
-# pr-agent (OSS) caller — adopts the wave-foundation reusable lane.
-# Engine: OSS Qodo Merge on our OPENAI_KEY (trial-independent). SSOT:
-# wave-foundation/.github/workflows/reusable-pr-agent.yml
+# pr-agent (OSS) — inlined from wave-foundation reusable-pr-agent.yml.
+# Engine: OSS Qodo Merge on our OPENAI_KEY (trial-independent).
+#
+# WHY INLINED: this repo is PUBLIC; wave-av/wave-foundation is PRIVATE. GitHub Actions does
+# NOT permit a public repo to consume a private repo's reusable workflow even with org-level
+# access — the call fails in 0s with 0 jobs (workflow_run never starts). Same constraint as
+# foundation-gate.yml / `_checks.yml`. Keep in sync with
+# wave-foundation/.github/workflows/reusable-pr-agent.yml on changes.
 name: pr-agent (OSS)
 on:
   pull_request:
@@ -19,6 +24,21 @@ concurrency:
 
 jobs:
   pr_agent:
-    uses: wave-av/wave-foundation/.github/workflows/reusable-pr-agent.yml@main
-    secrets:
-      OPENAI_KEY: ${{ secrets.OPENAI_KEY }}
+    if: ${{ github.event.sender.type != 'Bot' }}
+    runs-on: ubuntu-latest
+    permissions:
+      issues: write
+      pull-requests: write
+      contents: write
+      checks: write
+    steps:
+      - name: PR Agent action step
+        id: pragent
+        uses: qodo-ai/pr-agent@f6af7d77554ff8d26adffded077e6461329e92fa # v0.42.0
+        env:
+          OPENAI_KEY: ${{ secrets.OPENAI_KEY }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          github_action_config.auto_review: "true"
+          github_action_config.auto_improve: "true"
+          github_action_config.pr_actions: '["opened", "reopened", "ready_for_review", "synchronize"]'
+          pr_code_suggestions.commitable_code_suggestions: "true"
