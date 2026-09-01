@@ -1,0 +1,19 @@
+SECRETS.md
+  s_727a7865b9cf0a::t_6889c024240c2a 52
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.23",
+  "base_commit_sha": "56f7ad6506baf892d6b4470d8f9311815a9e6ed2",
+  "prompts": {},
+  "sessions": {
+    "s_727a7865b9cf0a": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "9c4cb020-d377-430e-9356-a2a574828c3f",
+        "model": "claude-opus-5"
+      },
+      "human_author": "Jake Fineman <jakefineman@gmail.com>"
+    }
+  }
+}
