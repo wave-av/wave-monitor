@@ -70,5 +70,8 @@
     "linux": { "target": [{ "target": "AppImage", "arch": ["x64"] }], "category": "AudioVideo" },
     "directories": { "output": "release" },
     "publish": null
+  },
+  "overrides": {
+    "js-yaml": "^4.3.2"
   }
 }
