@@ -1,0 +1,21 @@
+package.json
+  s_e57a421d93fc0d::t_7b02b444a04551 54-56
+package-lock.json
+  s_e57a421d93fc0d::t_ca190e94349adf 5684-5686
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.23",
+  "base_commit_sha": "b0d90a33977f56c67826815f49a19ee54504e244",
+  "prompts": {},
+  "sessions": {
+    "s_e57a421d93fc0d": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_f63e974a2ffeqvfTqkIyEz8bPP",
+        "model": "muse-spark-1.3-contributor"
+      },
+      "human_author": "Jake Fineman <jakefineman@gmail.com>"
+    }
+  }
+}
