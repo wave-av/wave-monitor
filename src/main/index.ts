@@ -50,7 +50,7 @@ function createWindow(): BrowserWindow {
    * the OS browser via shell.openExternal and prevent the in-window navigation.
    * Anything else (`javascript:`, `file:`, app-protocols, malformed) is dropped.
    *
-   * Review of PR #1 caught that the previous handler only covered
+   * cubic-dev-ai PR #1 review caught that the previous handler only covered
    * window.open. Same-window navigation must be locked down too.
    */
   const allowedInternalOrigins = new Set<string>();
@@ -64,7 +64,7 @@ function createWindow(): BrowserWindow {
   /*
    * `file:` URLs have no origin; allowlist exactly the bundled renderer entry.
    *
-   * A follow-up review of PR #1 caught that the previous `protocol === 'file:'`
+   * cubic-dev-ai PR #1 follow-up review caught that the previous `protocol === 'file:'`
    * check was too broad — a renderer XSS could navigate to any local file URL. Restrict
    * to the exact packaged entry; anything else under `file:` is treated as external.
    */
