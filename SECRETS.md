@@ -26,6 +26,10 @@ gateway. The renderer cannot read them — preload exposes presence flags only.
 | `APPLE_ID` / `APPLE_APP_SPECIFIC_PASSWORD` / `APPLE_TEAM_ID` | GitHub Actions org secret | macOS notarization |
 | `CSC_LINK` / `CSC_KEY_PASSWORD` | GitHub Actions org secret | Code-signing certificate |
 
+No workflow in this repo consumes these yet (there is no release workflow), so
+the machine contract below lists `secrets: []`. Add them to the contract in the
+same change that adds the signing/notarization workflow.
+
 ## Public-facing config (OK to ship)
 
 | Value | Why public is fine |
