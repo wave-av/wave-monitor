@@ -18,10 +18,5 @@
     ],
     "foundationFrameworks": ["frameworks/protocol-plane", "frameworks/platform-registry"]
   },
-  "events": {
-    "publishes": [
-      { "topic": "monitor.connection.failed", "transport": "sentry" }
-    ]
-  },
   "tags": ["operator", "public", "viewer", "webrtc-whep", "on-prem", "build-on-wave"]
 }
