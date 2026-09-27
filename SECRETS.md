@@ -26,6 +26,10 @@ gateway. The renderer cannot read them — preload exposes presence flags only.
 | `APPLE_ID` / `APPLE_APP_SPECIFIC_PASSWORD` / `APPLE_TEAM_ID` | GitHub Actions org secret | macOS notarization |
 | `CSC_LINK` / `CSC_KEY_PASSWORD` | GitHub Actions org secret | Code-signing certificate |
 | `SENTRY_AUTH_TOKEN` | GitHub Actions repo secret | Symbol upload to wave-online-llc Sentry |
+| `OPENAI_KEY` | GitHub Actions secret | Model key for the `pr-agent` review workflow |
+| `ISSUE_OPS_PAT` / `BOT_ISSUE_OPS_APP_ID` / `BOT_ISSUE_OPS_PRIVATE_KEY` | GitHub Actions secret | Passed to the `issue-ops-triage` reusable workflow |
+
+`GITHUB_TOKEN` is the Actions-provided per-run token and is not declared.
 
 ## Public-facing config (OK to ship)
 
@@ -49,6 +53,14 @@ patterns under `resources/` for the deny-list and `CONTRIBUTING.md` §
 version: "0.1"
 secrets:
   - name: SENTRY_AUTH_TOKEN
+    vault: "gh:wave-av/wave-monitor"
+  - name: OPENAI_KEY
+    vault: "gh:wave-av/wave-monitor"
+  - name: ISSUE_OPS_PAT
+    vault: "gh:wave-av/wave-monitor"
+  - name: BOT_ISSUE_OPS_APP_ID
+    vault: "gh:wave-av/wave-monitor"
+  - name: BOT_ISSUE_OPS_PRIVATE_KEY
     vault: "gh:wave-av/wave-monitor"
 deny_paths:
   - ".dev.vars"
