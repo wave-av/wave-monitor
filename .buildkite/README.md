@@ -166,11 +166,32 @@ install.
    `provider_settings`).
 3. **Provision an agent on queue `fpc-isolated`** matching the guest-image prerequisites above (or
    confirm an existing `fpc-isolated` agent already satisfies them).
-4. **Observe a green build** on this branch/PR for both `gate-checks` and `secrets-content-policy`,
+4. **Set `GUARD_PRIVATE_REPOS`** in the Buildkite agent or job environment (e.g. via the agent
+   environment hook for this pipeline) to the same comma- or space-separated value as GitHub
+   `vars.GUARD_PRIVATE_REPOS`. Leave it empty/unset only when the GitHub variable is empty —
+   otherwise `secrets-content-policy.sh` silently skips the private-repo-name rule that GitHub's
+   `Secrets + content policy` check enforces, and Buildkite can report green on a PR that the GitHub
+   guard would correctly block. Never set this via `pipeline.yml` or a committed script — baking the
+   list into a public repo's tree would itself be exactly the leak `content-policy.sh` exists to catch.
+5. **Observe a green build** on this branch/PR for both `gate-checks` and `secrets-content-policy`,
    posting `buildkite/<pipeline-slug>/gate-checks` and `buildkite/<pipeline-slug>/secrets-content-policy`.
-5. After a green soak, **switch the required GitHub status checks** in branch protection from
+6. After a green soak, **switch the required GitHub status checks** in branch protection from
    `gate / checks` / `Secrets + content policy` to the two `buildkite/...` contexts above. That edit
    is out of scope for this PR and must be done explicitly by an operator with repo admin access.
+
+   **Fork-PR gap this swap opens.** This port does not enable "Build pull requests from forks" on the
+   Buildkite pipeline, so an external fork PR never gets a Buildkite agent (secrets/agent safety beats
+   convenience here — a fork PR's branch content is attacker-controlled) and never posts
+   `buildkite/<pipeline-slug>/gate-checks` or `buildkite/<pipeline-slug>/secrets-content-policy`. Once
+   step 6 makes those contexts required, a fork PR has no automatic producer for them and sits
+   permanently un-mergeable, even though the shadowed GH Actions checks (which do run on fork PRs)
+   would have passed. GitHub branch protection requires every listed context, so there is no
+   required-status "OR" — leaving a GH check required alongside the Buildkite ones does not give forks
+   a way through. A fork PR only gets real coverage once a maintainer re-pushes its branch/commit into
+   `wave-av/wave-monitor` (e.g. `git push` to a same-repo branch, or `gh pr checkout` + repush) or
+   triggers a Buildkite build for that commit manually. An operator making this swap must accept that
+   gap or keep it in mind for fork-originated contributions. (Same gap independently documented on the
+   sibling `wave-av/sdk` shadow port, PR #152.)
 
 ## Exit criterion for the soak
 
