@@ -54,7 +54,7 @@
   "build": {
     "appId": "online.wave.monitor",
     "productName": "WAVE Monitor",
-    "copyright": "Copyright © 2026 WAVE Online LLC",
+    "copyright": "Copyright © 2026 WAVE Online, LLC",
     "files": ["out/**/*", "package.json"],
     "mac": {
       "category": "public.app-category.video",
