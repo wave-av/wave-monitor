@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Shared helpers for .buildkite/steps/*.sh. SOURCED by every step script, never run directly.
 #
-# Vendored from wave-av/wave-gateway .buildkite/scripts/lib/common.sh (draft PR #1928, branch
+# Vendored from a sibling repo's .buildkite/scripts/lib/common.sh (a draft shadow-port PR, branch
 # feat/buildkite-ci) by way of wave-av/wave-opencode's port (draft PR #222). wave-monitor is a
 # PUBLIC repo and wave-foundation's "Buildkite template v0" (PR #1570) lives in a PRIVATE repo, so
 # this file is vendored rather than referenced cross-repo, the same way .github/workflows/_checks.yml
@@ -12,7 +12,7 @@
 # major-version assertion, and touches no Doppler or Cloudflare credential, so those helpers were
 # dropped rather than carried in unused. What's kept: strict mode, log grouping, a job-local temp
 # dir with cleanup-on-exit, and the multi-gate runner/summary pattern used by every fleet port so
-# far (see wave-opencode .buildkite/scripts/lib/common.sh, wave-gateway's original).
+# far (see wave-opencode .buildkite/scripts/lib/common.sh, the sibling repo's original).
 # TODO(buildkite-template): re-vendor from wave-av/wave-foundation buildkite/template/v0 (PR #1570)
 # once that template is generally available to public repos.
 #

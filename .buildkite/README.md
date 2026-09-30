@@ -16,7 +16,7 @@ branch-protection change.
 | `steps/<step>.sh` | One checked-in script per step. `command:` is only ever a script path, compatible with agent `no-command-eval`. |
 | `lib/common.sh` | Strict mode, log groups, a job-local temp dir cleaned on exit, and the multi-gate runner/summary used by both step scripts. |
 
-`lib/common.sh` is vendored from wave-av/wave-gateway's shadow port (draft PR #1928,
+`lib/common.sh` is vendored from a sibling repo's shadow port (draft PR,
 `feat/buildkite-ci`) by way of wave-av/wave-opencode's port (draft PR #222). wave-monitor is a
 **public** repo and wave-foundation's "Buildkite template v0" (PR #1570, common.sh + npm-install.sh
 + pipeline.example.yml) lives in a **private** repo, so it is vendored here rather than referenced
