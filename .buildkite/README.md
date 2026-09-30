@@ -90,6 +90,14 @@ repo with no such variable configured.
   host-provisioned caps-lint bootstrap step into the Buildkite UI before this pipeline can be
   uploaded. That is a Buildkite pipeline **setting**, not a file in this repo, so it is called out
   in "Operator steps" below rather than committed here.
+- **Secret-scan hit reporting is redacted (CWE-532), unlike `_checks.yml`.** The GH Actions original
+  prints the full matching line — which, for a true positive, is the credential itself — into the
+  job log. `checks.sh` prints only `path:line` (via `cut -d: -f1,2`) plus a generic message, never
+  the matched text, before failing with the same exit code. This is an intentional, narrow
+  divergence from "byte-faithful": detection (regex, exclude-dirs, allowlist handling) is unchanged,
+  only the report line differs. The GitHub Actions `_checks.yml` original carries the same exposure
+  today; fixing that is a follow-up for wave-foundation's source `checks.yml`, not something changed
+  by this PR.
 
 ## Guest-image prerequisites
 
@@ -126,7 +134,36 @@ install.
 1. **Create the Buildkite pipeline** for `wave-av/wave-monitor`, uploading `.buildkite/pipeline.yml`
    (directly, or via a bootstrap step, following the fleet's existing pattern).
 2. **Connect the GitHub App** for this repository so Buildkite can post commit statuses and trigger
-   on push / pull_request.
+   on push / pull_request. Connecting the app by itself only establishes Buildkite's **pipeline-level**
+   default status (`buildkite/<pipeline-slug>`) — it does **not** by itself produce the two per-step
+   contexts this README documents. In the pipeline's **Settings → GitHub** page (or via the REST API's
+   `provider_settings`, below), enable all three:
+   - `publish_commit_status` (UI: **Update commit statuses**) — Buildkite publishes any GitHub status
+     at all.
+   - `publish_commit_status_per_step` (UI: **Create a status for each job**) — a separate status is
+     published per job instead of one pipeline-level status.
+   - `use_step_key_as_commit_status` — each job's context uses its `key:` (`gate-checks`,
+     `secrets-content-policy`) instead of its emoji `label:`, producing exactly
+     `buildkite/<pipeline-slug>/gate-checks` and `buildkite/<pipeline-slug>/secrets-content-policy` —
+     the contexts named throughout this README.
+
+   Copy-pasteable `provider_settings` block for the pipelines REST API
+   (`POST/PATCH https://api.buildkite.com/v2/organizations/{org}/pipelines[/{pipeline}]`):
+
+   ```json
+   {
+     "provider_settings": {
+       "publish_commit_status": true,
+       "publish_commit_status_per_step": true,
+       "use_step_key_as_commit_status": true
+     }
+   }
+   ```
+
+   Source: Buildkite's GitHub source-control docs
+   (<https://buildkite.com/docs/pipelines/source-control/github>, "Customizing commit statuses") and
+   the pipelines REST API reference (<https://buildkite.com/docs/apis/rest-api/pipelines>,
+   `provider_settings`).
 3. **Provision an agent on queue `fpc-isolated`** matching the guest-image prerequisites above (or
    confirm an existing `fpc-isolated` agent already satisfies them).
 4. **Observe a green build** on this branch/PR for both `gate-checks` and `secrets-content-policy`,
