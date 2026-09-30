@@ -69,12 +69,13 @@ install + invocation.
 **`GUARD_PRIVATE_REPOS`**: the workflow reads this from the org/repo Actions variable
 `vars.GUARD_PRIVATE_REPOS`. When unset there, GitHub still passes an *empty string* into the job
 env, and `content-policy.sh`'s `[[ -n "${GUARD_PRIVATE_REPOS:-}" ]]` check then skips the
-private-repo-name rule. `secrets-content-policy.sh` does not set or fabricate this variable — it
-simply doesn't touch it, so whatever the Buildkite agent environment provides (or doesn't) flows
-through to `content-policy.sh` unchanged. An operator who wants parity with the Actions variable
-should export `GUARD_PRIVATE_REPOS` from the agent environment hook for this pipeline; absent that,
-behavior matches the unset-Actions-variable case (rule skipped), which is also today's default on a
-repo with no such variable configured.
+private-repo-name rule. On Buildkite, the `secrets-content-policy` step declares
+`secrets: [GUARD_PRIVATE_REPOS]` in `pipeline.yml`, which exports the Buildkite cluster secret of
+that name into the step's job env (Buildkite redacts it from build logs if it is ever printed).
+`secrets-content-policy.sh` does not set or fabricate this variable — it simply doesn't touch it, so
+whatever the cluster secret provides (or doesn't, if unset) flows through to `content-policy.sh`
+unchanged. Behavior with no such cluster secret configured matches the unset-Actions-variable case
+(rule skipped), which is also today's default on a repo with no GitHub Actions variable configured.
 
 ## Differences from GH, on purpose
 
@@ -166,13 +167,16 @@ install.
    `provider_settings`).
 3. **Provision an agent on queue `fpc-isolated`** matching the guest-image prerequisites above (or
    confirm an existing `fpc-isolated` agent already satisfies them).
-4. **Set `GUARD_PRIVATE_REPOS`** in the Buildkite agent or job environment (e.g. via the agent
-   environment hook for this pipeline) to the same comma- or space-separated value as GitHub
-   `vars.GUARD_PRIVATE_REPOS`. Leave it empty/unset only when the GitHub variable is empty —
+4. **Create a Buildkite cluster secret named `GUARD_PRIVATE_REPOS`** (org `wave`, cluster
+   "WAVE self-hosted CI") holding the same comma- or space-separated value as GitHub
+   `vars.GUARD_PRIVATE_REPOS`. The `secrets-content-policy` step's `secrets: [GUARD_PRIVATE_REPOS]`
+   attribute in `pipeline.yml` exports that cluster secret as the `GUARD_PRIVATE_REPOS` env var for
+   that step only. Leave the cluster secret empty/unset only when the GitHub variable is empty —
    otherwise `secrets-content-policy.sh` silently skips the private-repo-name rule that GitHub's
    `Secrets + content policy` check enforces, and Buildkite can report green on a PR that the GitHub
-   guard would correctly block. Never set this via `pipeline.yml` or a committed script — baking the
-   list into a public repo's tree would itself be exactly the leak `content-policy.sh` exists to catch.
+   guard would correctly block. Never set this via a literal value in `pipeline.yml` or a committed
+   script — baking the list into a public repo's tree would itself be exactly the leak
+   `content-policy.sh` exists to catch.
 5. **Observe a green build** on this branch/PR for both `gate-checks` and `secrets-content-policy`,
    posting `buildkite/<pipeline-slug>/gate-checks` and `buildkite/<pipeline-slug>/secrets-content-policy`.
 6. After a green soak, **switch the required GitHub status checks** in branch protection from
