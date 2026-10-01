@@ -29,7 +29,7 @@ rather than a live `uses: wave-av/wave-foundation/...@master` reference. `lib/np
 | step key | script | shadows (GH workflow / job) | GitHub required context | needs secret |
 |---|---|---|---|---|
 | `gate-checks` | `checks.sh` | `_checks.yml` job `checks` | `gate / checks` | none |
-| `secrets-content-policy` | `secrets-content-policy.sh` | `public-repo-guard.yml` job `guard` | `Secrets + content policy` | none |
+| `secrets-content-policy` | `secrets-content-policy.sh` | `public-repo-guard.yml` job `guard` | `Secrets + content policy` | `GUARD_PRIVATE_REPOS` |
 
 Once a Buildkite pipeline is created for this repo with slug `<pipeline-slug>` (the operator names
 it at creation; a natural choice is `wave-monitor`), these steps post GitHub commit statuses at:
@@ -73,9 +73,26 @@ private-repo-name rule. On Buildkite, the `secrets-content-policy` step declares
 `secrets: [GUARD_PRIVATE_REPOS]` in `pipeline.yml`, which exports the Buildkite cluster secret of
 that name into the step's job env (Buildkite redacts it from build logs if it is ever printed).
 `secrets-content-policy.sh` does not set or fabricate this variable — it simply doesn't touch it, so
-whatever the cluster secret provides (or doesn't, if unset) flows through to `content-policy.sh`
-unchanged. Behavior with no such cluster secret configured matches the unset-Actions-variable case
-(rule skipped), which is also today's default on a repo with no GitHub Actions variable configured.
+whatever the cluster secret's value is flows through to `content-policy.sh` unchanged.
+
+**This requires the cluster secret to exist, not merely be unset.** The Buildkite agent fetches every
+key named in a step's `secrets:` list before the step's command runs at all; a key that does not
+exist in the cluster fails that fetch and the job never starts (`secrets-content-policy.sh` never
+runs, so its own "unset → skip the rule" fallback never gets a chance to apply). That differs from
+the GH Actions variable, which really can be left undefined. To get the GH-equivalent behavior on
+Buildkite ("rule skipped"), the cluster secret must exist with an **empty string** value — not be
+absent. See "Operator steps needed" below.
+
+**Same-repo PR builds receive this secret.** This pipeline builds pushes and same-repo (non-fork)
+pull requests; fork PRs never get a Buildkite agent at all (see "Fork-PR gap" below), so only
+contributors who can push a branch in `wave-av/wave-monitor` can trigger a build that sees
+`GUARD_PRIVATE_REPOS`. That is the same trust boundary every other step on this queue already
+operates under — this secret does not widen it. It is also a low-sensitivity value: GitHub itself
+stores the equivalent as a plain, unmasked Actions **variable**, not a secret, so step-scoped
+injection plus automatic log redaction here is already stricter than the GH baseline. Restricting
+the secret to protected-branch-only builds was considered and rejected: this step's job is to scan
+each PR's own content for policy violations, including a PR that edits the step itself — running it
+only from a trusted ref would defeat that purpose.
 
 ## Differences from GH, on purpose
 
@@ -165,18 +182,20 @@ install.
    (<https://buildkite.com/docs/pipelines/source-control/github>, "Customizing commit statuses") and
    the pipelines REST API reference (<https://buildkite.com/docs/apis/rest-api/pipelines>,
    `provider_settings`).
-3. **Provision an agent on queue `fpc-isolated`** matching the guest-image prerequisites above (or
-   confirm an existing `fpc-isolated` agent already satisfies them).
+3. **Provision an agent on queue `fpc-isolated` running Buildkite Agent v3.106.0 or later** — the
+   minimum version that supports the pipeline-YAML `secrets:` attribute `secrets-content-policy` now
+   declares (<https://buildkite.com/docs/pipelines/security/secrets/buildkite-secrets>) — matching the
+   guest-image prerequisites above, or confirm an existing `fpc-isolated` agent satisfies both.
 4. **Create a Buildkite cluster secret named `GUARD_PRIVATE_REPOS`** (org `wave`, cluster
    "WAVE self-hosted CI") holding the same comma- or space-separated value as GitHub
    `vars.GUARD_PRIVATE_REPOS`. The `secrets-content-policy` step's `secrets: [GUARD_PRIVATE_REPOS]`
    attribute in `pipeline.yml` exports that cluster secret as the `GUARD_PRIVATE_REPOS` env var for
-   that step only. Leave the cluster secret empty/unset only when the GitHub variable is empty —
-   otherwise `secrets-content-policy.sh` silently skips the private-repo-name rule that GitHub's
-   `Secrets + content policy` check enforces, and Buildkite can report green on a PR that the GitHub
-   guard would correctly block. Never set this via a literal value in `pipeline.yml` or a committed
-   script — baking the list into a public repo's tree would itself be exactly the leak
-   `content-policy.sh` exists to catch.
+   that step only. **The secret must exist** — Buildkite fails the job at startup if a declared
+   `secrets:` key is missing, before `secrets-content-policy.sh` ever runs. Set its value to an empty
+   string only when the GitHub variable is empty; a deleted/never-created key is not the same thing
+   and will break the step, not silently skip the private-repo-name rule. Never set this via a literal
+   value in `pipeline.yml` or a committed script — baking the list into a public repo's tree would
+   itself be exactly the leak `content-policy.sh` exists to catch.
 5. **Observe a green build** on this branch/PR for both `gate-checks` and `secrets-content-policy`,
    posting `buildkite/<pipeline-slug>/gate-checks` and `buildkite/<pipeline-slug>/secrets-content-policy`.
 6. After a green soak, **switch the required GitHub status checks** in branch protection from
