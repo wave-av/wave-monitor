@@ -1,0 +1,51 @@
+# wave-monitor CI on Buildkite (SHADOW mode). See .buildkite/README.md.
+#
+# Reproduces this repo's two REQUIRED GitHub commit-status contexts:
+#   "gate / checks"            <- .github/workflows/_checks.yml, job `checks`
+#   "Secrets + content policy" <- .github/workflows/public-repo-guard.yml, job `guard`
+#
+# Every GitHub Actions workflow stays untouched and remains the required check until this pipeline
+# has been green for a soak period and an operator swaps branch protection. That swap is a separate,
+# operator-gated change — this PR does not touch branch protection.
+#
+# Rules for every step here:
+#   - command is one checked-in script (compatible with agent no-command-eval)
+#   - explicit timeout_in_minutes
+#   - automatic retry only for infra loss (-1 agent lost, 255 guest died), limit 1 each; a real gate
+#     failure is never retried automatically, so a red build stays visible
+#   - no plugins, no secret values in env
+# Steps have no depends_on: each runs in its own disposable guest, in parallel.
+
+agents:
+  queue: fpc-isolated
+
+steps:
+  - label: ":closed_lock_with_key: gate / checks (secret scan + file-size gate)"
+    key: gate-checks
+    command: .buildkite/steps/checks.sh
+    timeout_in_minutes: 10
+    retry:
+      automatic:
+        - exit_status: -1
+          limit: 1
+        - exit_status: 255
+          limit: 1
+      manual:
+        allowed: true
+        permit_on_passed: false
+
+  - label: ":mag: Secrets + content policy (gitleaks + content-policy.sh)"
+    key: secrets-content-policy
+    command: .buildkite/steps/secrets-content-policy.sh
+    secrets:
+      - GUARD_PRIVATE_REPOS
+    timeout_in_minutes: 10
+    retry:
+      automatic:
+        - exit_status: -1
+          limit: 1
+        - exit_status: 255
+          limit: 1
+      manual:
+        allowed: true
+        permit_on_passed: false
