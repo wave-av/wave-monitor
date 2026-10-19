@@ -26,7 +26,25 @@ npm install
 npm run dev
 ```
 
-`npm run dist:mac` produces a `.dmg` for arm64 + x64.
+`npm run dist:mac` produces a signed `.dmg` (+ `.zip` for auto-update) for arm64 + x64.
+
+## Productization (0.1.0 ship)
+
+Second Wave desktop app on the proven path: frameless shell + loopback
+control plane + rollout-gated auto-updates. See [RELEASE-CHECKLIST.md](./RELEASE-CHECKLIST.md)
+for the nine release gates (`npm run release-check` runs 1–5).
+
+- `src/main/control-plane/` — loopback HTTP API on `127.0.0.1:7729`
+  (`WAVE_MONITOR_PORT` overrides): `GET /v1/status`, `GET /v1/version`,
+  `POST /v1/monitor/start|stop`. Bearer key in OS safeStorage; same state
+  the IPC layer owns. Ported from wave-desktop's control plane.
+- `src/main/updater/` — `electron-updater` against
+  `https://updates.wave.online/wave-monitor`, gated by a staged-rollout
+  check (`rollout.json` pin + stable machine cohort; fails closed).
+  Ported from the create-wave-app electron template.
+- `scripts/` — `smoke.sh`, `cold-boot.sh`, `brand-proof.sh`,
+  `rollout-sim.sh` (+ `local-feed.mjs` stub feed). `--smoke-test` mode in
+  main prints one `SMOKE_OK` JSON line and quits.
 
 ## Architecture
 

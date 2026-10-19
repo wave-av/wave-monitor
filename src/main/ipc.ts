@@ -21,19 +21,34 @@ let state: MonitorState = {
   rmsR: -Infinity,
 };
 
+/**
+ * Snapshot accessor shared by the IPC layer and the loopback control plane
+ * — both read and write the same module state, so the HTTP API and the
+ * renderer can never disagree about what is bound.
+ */
+export function getMonitorState(): MonitorState {
+  return state;
+}
+
+export function startMonitoring(feedUrl: string): MonitorState {
+  // Wave 2: open RTCPeerConnection against gateway, attach audio track
+  // to an AudioWorkletProcessor that emits peak/RMS at 20Hz.
+  state = { ...state, feedUrl, connected: true };
+  return state;
+}
+
+export function stopMonitoring(): MonitorState {
+  state = { feedUrl: null, connected: false, peakL: -Infinity, peakR: -Infinity, rmsL: -Infinity, rmsR: -Infinity };
+  return state;
+}
+
 export function registerIpcHandlers(): void {
-  ipcMain.handle(IPC.monitorState, (): MonitorState => state);
+  ipcMain.handle(IPC.monitorState, (): MonitorState => getMonitorState());
 
   ipcMain.handle(IPC.monitorStart, (_e: IpcMainInvokeEvent, raw: unknown): MonitorState => {
     const req = StartRequestSchema.parse(raw);
-    // Wave 2: open RTCPeerConnection against gateway, attach audio track
-    // to an AudioWorkletProcessor that emits peak/RMS at 20Hz.
-    state = { ...state, feedUrl: req.feedUrl, connected: true };
-    return state;
+    return startMonitoring(req.feedUrl);
   });
 
-  ipcMain.handle(IPC.monitorStop, (): MonitorState => {
-    state = { feedUrl: null, connected: false, peakL: -Infinity, peakR: -Infinity, rmsL: -Infinity, rmsR: -Infinity };
-    return state;
-  });
+  ipcMain.handle(IPC.monitorStop, (): MonitorState => stopMonitoring());
 }

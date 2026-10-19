@@ -3,11 +3,8 @@
  */
 
 import { contextBridge, ipcRenderer } from 'electron';
-import {
-  IPC,
-  type MonitorState,
-  type StartRequest,
-} from '@shared/ipc';
+import { IPC } from '@shared/channels';
+import type { MonitorState, StartRequest, UpdateSnapshot } from '@shared/ipc';
 
 const wave = {
   monitor: {
@@ -15,6 +12,10 @@ const wave = {
     start: (req: StartRequest): Promise<MonitorState> =>
       ipcRenderer.invoke(IPC.monitorStart, req),
     stop: (): Promise<MonitorState> => ipcRenderer.invoke(IPC.monitorStop),
+  },
+  updates: {
+    status: (): Promise<UpdateSnapshot> => ipcRenderer.invoke(IPC.updateStatus),
+    check: (): Promise<UpdateSnapshot> => ipcRenderer.invoke(IPC.checkForUpdates),
   },
 } as const;
 

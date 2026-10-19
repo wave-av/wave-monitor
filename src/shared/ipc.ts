@@ -23,9 +23,28 @@ export const StartRequestSchema = z.object({
 });
 export type StartRequest = z.infer<typeof StartRequestSchema>;
 
-export const IPC = {
-  monitorState: 'wave:monitor:state',
-  monitorStart: 'wave:monitor:start',
-  monitorStop: 'wave:monitor:stop',
-} as const;
+import { IPC } from './channels';
+
+export { IPC };
 export type IpcChannel = (typeof IPC)[keyof typeof IPC];
+
+/**
+ * Auto-update snapshot served over IPC.updateStatus. States: idle,
+ * checking, up-to-date, available, deferred (rollout gate), ready, error.
+ * Shape mirrors the create-wave-app electron template's updater.js.
+ */
+export type UpdateState =
+  | 'idle'
+  | 'checking'
+  | 'up-to-date'
+  | 'available'
+  | 'deferred'
+  | 'ready'
+  | 'error';
+
+export interface UpdateSnapshot {
+  state: UpdateState;
+  version: string | null;
+  error: string | null;
+  feed: string;
+}
