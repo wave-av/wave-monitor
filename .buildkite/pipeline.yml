@@ -1,0 +1,11 @@
+steps:
+  - label: ":test_tube: typecheck + lint + unit tests"
+    key: node-gates
+    command: .buildkite/scripts/ci.sh
+    agents:
+      queue: fpc-isolated
+    timeout_in_minutes: 15
+    retry:
+      automatic:
+        - exit_status: -1
+          limit: 1
