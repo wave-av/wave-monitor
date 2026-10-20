@@ -12,7 +12,9 @@ const flag = (name, dflt) => {
 };
 
 const VERSION = flag('version', '0.2.0');
-const ROLLOUT = Number(flag('rollout', '1'));
+// Fail-closed on a non-numeric flag: NaN would serialize as null downstream.
+const _rollout = Number(flag('rollout', '1'));
+const ROLLOUT = Number.isFinite(_rollout) ? _rollout : 1;
 
 const server = http.createServer((req, res) => {
   if (req.url === '/rollout.json') {
