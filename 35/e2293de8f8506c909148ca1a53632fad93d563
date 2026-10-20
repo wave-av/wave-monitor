@@ -1,0 +1,14 @@
+rig/lib/backend.sh
+  h_af5ac1a9798224 120
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.23",
+  "base_commit_sha": "35e2293de8f8506c909148ca1a53632fad93d563",
+  "prompts": {},
+  "humans": {
+    "h_af5ac1a9798224": {
+      "author": "Jake Fineman <jakefineman@gmail.com>"
+    }
+  }
+}
