@@ -4,6 +4,17 @@ All notable changes documented here.
 
 ## [Unreleased]
 
+### Added
+
+- Productization for the 0.1.0 ship (second Wave desktop app on the proven
+  path): frameless shell (`frame: false` + drag header + window menu),
+  loopback control plane on `127.0.0.1:7729` (status/version/monitor
+  start-stop, safeStorage Bearer key, key rotation), and rollout-gated
+  auto-updates (`electron-updater` + staged-rollout guard, fail-closed).
+- Release gates: `smoke`, `cold-boot`, `brand-proof`, `rollout-sim`
+  (`RELEASE-CHECKLIST.md`, gates 1–9; publish/tag dry-run only).
+- `resources/icon.icns`/`icon.png` placeholder brand mark (final art TBD).
+
 ### Fixed
 
 - `pr-agent` lane: fork-triggered `/` commands are now refused, and the AI

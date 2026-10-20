@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import type { MonitorState } from '@shared/ipc';
 import { Monitor } from './views/Monitor';
+import { SettingsPanel } from './views/SettingsPanel';
 
 export function App(): React.JSX.Element {
   const [state, setState] = useState<MonitorState | null>(null);
@@ -51,6 +52,7 @@ export function App(): React.JSX.Element {
       <main className="flex-1 overflow-hidden">
         {state ? <Monitor state={state} onChange={setState} /> : null}
       </main>
+      <SettingsPanel />
     </div>
   );
 }

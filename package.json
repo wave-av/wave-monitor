@@ -10,7 +10,9 @@
     "type": "git",
     "url": "https://github.com/wave-av/wave-monitor.git"
   },
-  "engines": { "node": ">=20.19.0" },
+  "engines": {
+    "node": ">=20.19.0"
+  },
   "scripts": {
     "dev": "electron-vite dev",
     "build": "electron-vite build",
@@ -22,10 +24,16 @@
     "dist": "electron-vite build && electron-builder",
     "dist:mac": "electron-vite build && electron-builder --mac",
     "dist:win": "electron-vite build && electron-builder --win",
-    "dist:linux": "electron-vite build && electron-builder --linux"
+    "dist:linux": "electron-vite build && electron-builder --linux",
+    "smoke": "./scripts/smoke.sh",
+    "cold-boot": "./scripts/cold-boot.sh",
+    "brand-proof": "./scripts/brand-proof.sh",
+    "rollout-sim": "./scripts/rollout-sim.sh",
+    "release-check": "npm run type-check && npm run lint && npm test && npm run brand-proof && npm run smoke"
   },
   "dependencies": {
     "@wave-av/sdk": "^2.0.14",
+    "electron-updater": "^6.8.10",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "zod": "^4.0.0",
@@ -43,8 +51,10 @@
     "electron": "^44.0.0",
     "electron-builder": "^26.15.3",
     "electron-vite": "^5.0.0",
+    "esbuild": "^0.28.2",
     "eslint": "^9.39.4",
     "eslint-plugin-react-hooks": "^5.2.0",
+    "globals": "^17.13.0",
     "tailwindcss": "^4.3.0",
     "typescript": "^5.9.3",
     "typescript-eslint": "^8.60.1",
@@ -59,7 +69,10 @@
     "appId": "online.wave.monitor",
     "productName": "WAVE Monitor",
     "copyright": "Copyright © 2026 WAVE Online, LLC",
-    "files": ["out/**/*", "package.json"],
+    "files": [
+      "out/**/*",
+      "package.json"
+    ],
     "mac": {
       "category": "public.app-category.video",
       "icon": "resources/icon.icns",
@@ -68,11 +81,58 @@
       "entitlements": "build/entitlements.mac.plist",
       "entitlementsInherit": "build/entitlements.mac.plist",
       "notarize": false,
-      "target": [{ "target": "dmg", "arch": ["arm64", "x64"] }]
+      "target": [
+        {
+          "target": "dmg",
+          "arch": [
+            "arm64",
+            "x64"
+          ]
+        },
+        {
+          "target": "zip",
+          "arch": [
+            "arm64",
+            "x64"
+          ]
+        }
+      ]
     },
-    "win": { "target": [{ "target": "nsis", "arch": ["x64"] }] },
-    "linux": { "target": [{ "target": "AppImage", "arch": ["x64"] }], "category": "AudioVideo" },
-    "directories": { "output": "release" },
-    "publish": null
+    "dmg": {
+      "title": "WAVE Monitor",
+      "window": {
+        "width": 540,
+        "height": 380
+      }
+    },
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ]
+    },
+    "linux": {
+      "target": [
+        {
+          "target": "AppImage",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "category": "AudioVideo"
+    },
+    "directories": {
+      "output": "release"
+    },
+    "publish": {
+      "provider": "generic",
+      "url": "https://updates.wave.online/wave-monitor",
+      "channel": "latest"
+    }
   }
 }

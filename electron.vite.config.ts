@@ -5,7 +5,11 @@ import tailwindcss from '@tailwindcss/vite';
 
 export default defineConfig({
   main: {
-    plugins: [externalizeDepsPlugin()],
+    // Bundle pure-JS deps into out/main: the packaged app ships only
+    // out/**/* + package.json (no node_modules), so an externalized
+    // require('zod') would crash the shipped binary. electron itself stays
+    // external (provided by the runtime).
+    plugins: [externalizeDepsPlugin({ exclude: ['zod', 'electron-updater', '@electron-toolkit/utils'] })],
     build: { outDir: 'out/main' },
     resolve: {
       alias: { '@shared': resolve(__dirname, 'src/shared') },

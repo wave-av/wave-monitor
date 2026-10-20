@@ -2,9 +2,12 @@
 const js = require('@eslint/js');
 const tseslint = require('typescript-eslint');
 const reactHooks = require('eslint-plugin-react-hooks');
+const globals = require('globals');
 
 module.exports = tseslint.config(
   { ignores: ['out/**', 'release/**', 'dist/**', 'node_modules/**', '*.config.js', '*.config.ts'] },
+  // Gate scripts run under plain node (no test runner, no Electron).
+  { files: ['scripts/**/*.mjs'], languageOptions: { globals: globals.node } },
   js.configs.recommended,
   ...tseslint.configs.recommended,
   reactHooks.configs['recommended-latest'],
