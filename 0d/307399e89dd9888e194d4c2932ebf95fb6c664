@@ -1,0 +1,20 @@
+CONTRIBUTING.md
+  h_af5ac1a9798224 7-8
+README.md
+  h_af5ac1a9798224 62
+package-lock.json
+  h_af5ac1a9798224 10
+package.json
+  h_af5ac1a9798224 7
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.23",
+  "base_commit_sha": "0d307399e89dd9888e194d4c2932ebf95fb6c664",
+  "prompts": {},
+  "humans": {
+    "h_af5ac1a9798224": {
+      "author": "Jake Fineman <jakefineman@gmail.com>"
+    }
+  }
+}
