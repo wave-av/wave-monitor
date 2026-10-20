@@ -1,0 +1,64 @@
+rig/README.md
+  h_af5ac1a9798224 20-21
+rig/config-patched/.buildkite/pipeline.yml
+  h_af5ac1a9798224 1-87
+rig/config-patched/.buildkite/scripts/ci.sh
+  h_af5ac1a9798224 1-9
+rig/config-patched/.buildkite/scripts/foundation-file-size.sh
+  h_af5ac1a9798224 1-16
+rig/config-patched/.buildkite/scripts/foundation-secret-scan.sh
+  h_af5ac1a9798224 1-35
+rig/config-patched/.buildkite/scripts/foundation-skill-validate.sh
+  h_af5ac1a9798224 1-70
+rig/config-patched/.buildkite/scripts/foundation-verify-routes.sh
+  h_af5ac1a9798224 1-49
+rig/config-patched/.buildkite/scripts/governance-enforce.sh
+  h_af5ac1a9798224 1-73
+rig/config-patched/.buildkite/scripts/guard-content-policy.sh
+  h_af5ac1a9798224 1-33
+rig/config-patched/.buildkite/scripts/guard-gitleaks.sh
+  h_af5ac1a9798224 1-24
+rig/config-patched/.buildkite/upload.sh
+  h_af5ac1a9798224 1-5
+rig/config-patched/scripts/public-repo-guard/content-policy.sh
+  h_af5ac1a9798224 1-143
+rig/fixtures/dotenv-block-content
+  h_af5ac1a9798224 1-3
+rig/fixtures/fork-pipeline.yml
+  h_af5ac1a9798224 1-25
+rig/fixtures/poison-content-policy.sh
+  h_af5ac1a9798224 1-9
+rig/fixtures/strip-refusal.py
+  h_af5ac1a9798224 1-31
+rig/lib/backend.sh
+  h_af5ac1a9798224 1-127
+rig/run.sh
+  h_af5ac1a9798224 1-300
+rig/selftest.sh
+  h_af5ac1a9798224 1-132
+rig/tools/analysis/emit.py
+  h_af5ac1a9798224 1-42
+rig/tools/analysis/pipeline.py
+  h_af5ac1a9798224 1-265
+rig/tools/shims/buildkite-agent
+  h_af5ac1a9798224 1-11
+rig/tools/shims/curl
+  h_af5ac1a9798224 1-5
+rig/tools/shims/git
+  h_af5ac1a9798224 1-15
+rig/tools/shims/node
+  h_af5ac1a9798224 1-9
+rig/tools/shims/npm
+  h_af5ac1a9798224 1-4
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.23",
+  "base_commit_sha": "5e1a32509f1adbca8c472953a07931c275f75f1a",
+  "prompts": {},
+  "humans": {
+    "h_af5ac1a9798224": {
+      "author": "Jake Fineman <jakefineman@gmail.com>"
+    }
+  }
+}
