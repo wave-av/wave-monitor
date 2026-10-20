@@ -117,7 +117,7 @@ rig_run_docker() {
     bash "$rel" >"$out" 2>&1
   local rc=$?
   [ -f "$res/shim.log" ] && cp "$res/shim.log" "$shimlog"
-  [ -f "$res/uploaded-pipeline.yml" ] && cp "$res/uploaded-pipeline.yml" "$cap/uploaded-pipeline.yml"
+  # uploaded-pipeline.yml already lands in $cap via the /results mount.
   return $rc
 }
 
