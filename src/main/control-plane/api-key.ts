@@ -65,10 +65,15 @@ export async function loadOrCreate(): Promise<string> {
   try {
     const cipher = await fs.readFile(path());
     if (safeStorage.isEncryptionAvailable()) {
-      const plain = safeStorage.decryptString(cipher);
-      if (plain.length === KEY_HEX_CHARS) return plain;
+      try {
+        const plain = safeStorage.decryptString(cipher);
+        if (plain.length === KEY_HEX_CHARS) return plain;
+      } catch {
+        // Undecryptable blob (OS reinstall / keychain change): fall through
+        // and mint a fresh key rather than disabling the plane every launch.
+      }
     }
-    // Fall through to regenerate on unreadable / wrong-length / no encryption.
+    // Fall through to regenerate on undecryptable / wrong-length / no encryption.
   } catch (err) {
     if ((err as NodeJS.ErrnoException).code !== 'ENOENT') {
       // Re-throw anything that isn't "file doesn't exist yet" so we don't

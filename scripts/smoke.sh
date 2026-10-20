@@ -7,14 +7,19 @@ set -euo pipefail
 
 cd "$(dirname "$0")/.."
 
-echo "== build (unpacked)"
-npm run build >/dev/null 2>&1
-
 WORK="$(mktemp -d /tmp/wave-monitor-smoke.XXXXXX)"
 trap 'rm -rf "$WORK"' EXIT
 
-WAVE_MONITOR_PORT=0 npx electron . --smoke-test >"$WORK/smoke.log" 2>&1
+echo "== build (unpacked)"
+if ! npm run build >"$WORK/build.log" 2>&1; then
+  echo "FAIL: npm run build"
+  cat "$WORK/build.log"
+  exit 1
+fi
+
+WAVE_MONITOR_PORT=0 npx electron . --smoke-test >"$WORK/smoke.log" 2>&1 || SMOKE_EXIT=$?
 cat "$WORK/smoke.log"
+[ "${SMOKE_EXIT:-0}" = "0" ] || { echo "FAIL: unpacked app smoke exited ${SMOKE_EXIT:-?}"; exit 1; }
 
 SMOKE="$(grep "SMOKE_OK" "$WORK/smoke.log" | head -n 1 || true)"
 [ -n "$SMOKE" ] || { echo "FAIL: no SMOKE_OK line"; exit 1; }

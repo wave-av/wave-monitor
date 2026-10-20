@@ -102,7 +102,11 @@ export function createRouter(routes: Route[], options: RouterOptions) {
     try {
       const result = await route.handler(req, res, { body });
       if (!res.writableEnded) {
-        writeJson(res, 200, result ?? { ok: true });
+        // Handlers signal expected protocol errors via `res.statusCode =
+        // 4xx` + a return body (see below) — honor it instead of
+        // clobbering with 200.
+        const status = res.statusCode >= 400 ? res.statusCode : 200;
+        writeJson(res, status, result ?? { ok: true });
       }
     } catch (err) {
       // Handlers are expected to throw on unexpected error only; expected
@@ -110,10 +114,15 @@ export function createRouter(routes: Route[], options: RouterOptions) {
       // We deliberately do NOT echo `err.message` to the client — that
       // leaks internal implementation details. The error is preserved in
       // server-side logs only.
-       
+
       console.error('[control-plane] handler threw', err);
-      if (!res.headersSent && !res.writableEnded) {
-        writeError(res, 500, { error: 'internal error', code: 'INTERNAL' });
+      if (!res.writableEnded) {
+        if (res.headersSent) {
+          // Headers already flushed — writeError would throw; just end.
+          res.end();
+        } else {
+          writeError(res, 500, { error: 'internal error', code: 'INTERNAL' });
+        }
       }
     }
   };

@@ -14,7 +14,11 @@ set -euo pipefail
 
 cd "$(dirname "$0")/.."
 WORK="$(mktemp -d /tmp/wave-monitor-proof.XXXXXX)"
-MNT="/tmp/wave-monitor-proof-mnt"
+# Mount point lives under the unique work dir: a fixed /tmp path would race
+# across concurrent runs (attach collision + the EXIT trap detaching the
+# other run's DMG).
+MNT="$WORK/mnt"
+mkdir -p "$MNT"
 trap 'rm -rf "$WORK"; hdiutil detach "$MNT" -quiet 2>/dev/null || true' EXIT
 
 echo "== 1. npm run build + unsigned dist (arm64)"
@@ -22,8 +26,9 @@ npm run build >/dev/null 2>&1
 CSC_IDENTITY_AUTO_DISCOVERY=false npx electron-builder --mac --arm64 2>&1 | tail -n 15
 
 echo "== 2. artifacts"
-DMG="release/WAVE Monitor-0.1.0-arm64.dmg"
-ZIP="release/WAVE Monitor-0.1.0-arm64-mac.zip"
+VERSION="$(node -p "require('./package.json').version")"
+DMG="release/WAVE Monitor-$VERSION-arm64.dmg"
+ZIP="release/WAVE Monitor-$VERSION-arm64-mac.zip"
 [ -f "$DMG" ] || { echo "FAIL: no arm64 dmg at $DMG"; ls -la release/; exit 1; }
 [ -f "$ZIP" ] || { echo "FAIL: no arm64 zip at $ZIP"; ls -la release/; exit 1; }
 ls -la "$DMG" "$ZIP"
@@ -43,15 +48,32 @@ SHIPPED_BIN="$WORK/Shipped.app/Contents/MacOS/WAVE Monitor"
 [ -x "$SHIPPED_BIN" ] || { echo "FAIL: DMG has no launchable WAVE Monitor.app"; exit 1; }
 
 echo "== 4. cold-boot shipped .app on a scratch port (never :7729)"
+command -v lsof >/dev/null 2>&1 || { echo "FAIL: lsof is required to prove :7729 untouched"; exit 1; }
 WAVE_MONITOR_PORT=0 "$SHIPPED_BIN" --smoke-test >"$WORK/smoke.log" 2>&1 &
 APP_PID=$!
-# While it runs, poll for any socket to live :7729 from the app tree.
+# While it runs, poll for any socket to live :7729 from the app tree
+# (LISTEN or ESTABLISHED — any touch counts).
 TOUCHED_LIVE=0
-for _ in $(seq 1 150); do
+for _ in $(seq 1 300); do
   grep -q "SMOKE_OK\|SMOKE_FAIL" "$WORK/smoke.log" 2>/dev/null && break
-  if lsof -a -p "$APP_PID" -iTCP:7729 -sTCP:ESTABLISHED 2>/dev/null | grep -q .; then TOUCHED_LIVE=1; fi
+  kill -0 "$APP_PID" 2>/dev/null || break
+  LSOF_OUT="$(lsof -a -p "$APP_PID" -iTCP:7729 2>"$WORK/lsof.err" || true)"
+  if [ -s "$WORK/lsof.err" ]; then
+    echo "FAIL: :7729 socket probe errored (fail-open is not an option):"
+    cat "$WORK/lsof.err"
+    exit 1
+  fi
+  if echo "$LSOF_OUT" | grep -q .; then TOUCHED_LIVE=1; fi
   sleep 0.2
 done
+if kill -0 "$APP_PID" 2>/dev/null; then
+  # Past the 45s in-app smoke timer with no verdict: kill so the gate fails
+  # instead of hanging on `wait` forever.
+  echo "WARN: shipped app still alive after 60s — killing"
+  kill "$APP_PID" 2>/dev/null || true
+  sleep 2
+  kill -9 "$APP_PID" 2>/dev/null || true
+fi
 wait "$APP_PID" || SMOKE_EXIT=$?
 cat "$WORK/smoke.log"
 [ "${SMOKE_EXIT:-0}" = "0" ] || { echo "FAIL: shipped app smoke exited ${SMOKE_EXIT:-?}"; exit 1; }

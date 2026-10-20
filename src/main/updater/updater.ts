@@ -29,32 +29,61 @@ function setStatus(next: Omit<UpdateSnapshot, 'feed'>): UpdateSnapshot {
 }
 
 export async function check(): Promise<UpdateSnapshot> {
-  setStatus({ state: 'checking', version: app.getVersion(), error: null });
+  const installed = app.getVersion();
+  setStatus({ state: 'checking', version: installed, error: null });
   try {
     autoUpdater.autoDownload = false;
     autoUpdater.autoInstallOnAppQuit = false;
     const res = await autoUpdater.checkForUpdates();
+    // electron-updater returns a non-null updateInfo even when nothing is
+    // newer, so "up-to-date" needs both the flag AND a version comparison.
     const available = res?.updateInfo ? String(res.updateInfo.version) : '';
-    if (!available) {
-      return setStatus({ state: 'up-to-date', version: app.getVersion(), error: null });
+    const offersNewer = available !== '' && available !== installed && res?.isUpdateAvailable !== false;
+    if (!offersNewer) {
+      return setStatus({ state: 'up-to-date', version: installed, error: null });
     }
     const gate = await rolloutAllows({ feedUrl: FEED_URL, version: available, machineId: defaultMachineId() });
     if (!gate.allowed) {
       return setStatus({ state: 'deferred', version: available, error: gate.reason });
     }
-    return setStatus({ state: 'available', version: available, error: null });
+    setStatus({ state: 'available', version: available, error: null });
+    // Gate admission is the download trigger (autoDownload stays false so
+    // nothing downloads pre-gate). Completion flips state to `ready` via
+    // the update-downloaded listener in startBackgroundChecks().
+    void autoUpdater.downloadUpdate().then(
+      () => undefined,
+      (err: unknown) => {
+        setStatus({
+          state: 'error',
+          version: available,
+          error: String((err as Error)?.message ?? err),
+        });
+      },
+    );
+    return snapshot();
   } catch (err) {
     return setStatus({
       state: 'error',
-      version: app.getVersion(),
+      version: installed,
       error: String((err as Error)?.message ?? err),
     });
   }
 }
 
+/**
+ * User-confirmed install: quit and install the downloaded update. Only
+ * meaningful in `ready` state; electron-updater no-ops otherwise.
+ */
+export function installAndRestart(): void {
+  autoUpdater.quitAndInstall();
+}
+
 export function registerUpdateIpc(): void {
   ipcMain.handle(IPC.updateStatus, () => snapshot());
   ipcMain.handle(IPC.checkForUpdates, async () => check());
+  ipcMain.handle(IPC.installUpdate, () => {
+    installAndRestart();
+  });
 }
 
 export function startBackgroundChecks(): void {

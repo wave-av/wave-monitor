@@ -12,6 +12,10 @@ export const IPC = {
   monitorState: 'wave:monitor:state',
   monitorStart: 'wave:monitor:start',
   monitorStop: 'wave:monitor:stop',
+  monitorMediaLive: 'wave:monitor:media-live',
+  revealApiKey: 'wave:monitor:reveal-api-key',
+  rotateApiKey: 'wave:monitor:rotate-api-key',
   updateStatus: 'wave:monitor:update-status',
   checkForUpdates: 'wave:monitor:check-for-updates',
+  installUpdate: 'wave:monitor:install-update',
 } as const;

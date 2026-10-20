@@ -40,14 +40,39 @@ export interface RolloutManifest {
   rollout: number;
 }
 
-type FetchImpl = (url: string, init?: { redirect?: 'follow' | 'error' | 'manual' }) => Promise<Response>;
+type FetchImpl = (
+  url: string,
+  init?: { redirect?: 'follow' | 'error' | 'manual'; signal?: AbortSignal },
+) => Promise<Response>;
 
 export async function fetchRollout(feedUrl: string, fetchImpl: FetchImpl = fetch): Promise<RolloutManifest> {
   const base = String(feedUrl).replace(/\/+$/, '');
-  const res = await fetchImpl(`${base}/rollout.json`, { redirect: 'follow' });
+  // Bound the manifest fetch: a stalled feed must not hang check() in
+  // `checking` forever.
+  const signal = AbortSignal.timeout(10_000);
+  let current = `${base}/rollout.json`;
+  let res: Response | undefined;
+  for (let hop = 0; hop <= 5; hop++) {
+    // Manual redirect handling: never follow an https→http downgrade — a
+    // swapped manifest would silently hold back (or force) an update.
+    res = await fetchImpl(current, { redirect: 'manual', signal });
+    if (res.status < 300 || res.status >= 400) break;
+    const location = res.headers.get('location');
+    if (!location) throw new Error(`rollout manifest HTTP ${res.status} (redirect without location)`);
+    const next = new URL(location, current);
+    if (next.protocol !== 'https:') throw new Error('rollout manifest redirected off https');
+    if (hop === 5) throw new Error('rollout manifest redirected too many times');
+    current = next.href;
+  }
+  if (!res) throw new Error('rollout manifest fetch failed');
   if (!res.ok) throw new Error(`rollout manifest HTTP ${res.status}`);
   const body = (await res.json()) as { version?: unknown; rollout?: unknown };
-  return { version: String(body.version ?? ''), rollout: Number(body.rollout) };
+  // Strictly numeric: Number(true) === 1 would silently mean "full rollout".
+  const rollout = body.rollout;
+  if (typeof rollout !== 'number' || !Number.isFinite(rollout)) {
+    throw new Error('rollout manifest has a non-numeric rollout fraction');
+  }
+  return { version: String(body.version ?? ''), rollout };
 }
 
 export interface RolloutVerdict {

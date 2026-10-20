@@ -16,7 +16,7 @@ until the `updates.wave.online/wave-monitor` feed is live.
 | 5 | smoke | `npm run smoke` | unpacked app paints on a scratch port; bridge + control plane answer; `:7729` untouched |
 | 6 | cold-boot | `npm run cold-boot` | unsigned dmg mounts; shipped `.app` cold-boots on scratch; no socket to `:7729` |
 | 7 | rollout | `npm run rollout-sim` | staged rollout holds against a local feed (0/25/50/100%, pin + fail-closed) |
-| 8 | signed dmg | `npm run dist:mac` → `codesign -dv`, `spctl -a` | Developer ID signature + hardened runtime on the shipped binary |
+| 8 | signed dmg | `npm run dist:mac` → `codesign -dv` (pass/fail), `spctl -a` (informational until notarized) | Developer ID signature + hardened runtime on the shipped binary, both archs |
 | 9 | publish/tag | **dry-run only** | `electron-builder --publish never`; no git tag; no feed upload |
 
 `npm run release-check` runs gates 1–5 in one shot.
@@ -39,11 +39,15 @@ until the `updates.wave.online/wave-monitor` feed is live.
 - Identity: `Developer ID Application: WAVE Online, LLC (429D888C5J)`.
 - `notarize: false` — no Apple API credentials on this box, so 0.1.0 ships
   signed + hardened-runtime but un-notarized (Gatekeeper asks on first
-  Finder launch; direct exec works). Flip `notarize` + add `CSC_*` /
-  `APPLE_*` creds in CI for the notarized release.
-- Verify: `codesign -dv --verbose=4 "release/mac-arm64/WAVE Monitor.app"`
-  shows the Developer ID authority + `flags=0x10000(runtime)`;
-  `spctl -a -vv` assesses (un-notarized = `rejected` source note, expected).
+  Finder launch; direct exec works). **The 0.1.0 DMG is INTERNAL
+  PRE-RELEASE ONLY** — never distribute beyond the team. Public release is
+  gated on a notarized build passing `spctl -a`. Flip `notarize` + add
+  `CSC_*` / `APPLE_*` creds in CI for the notarized release.
+- Verify (BOTH arch outputs — `release/mac-arm64` and `release/mac-x64`):
+  `codesign -dv --verbose=4 "<arch>/WAVE Monitor.app"` shows the Developer
+  ID authority + `flags=0x10000(runtime)` — this is the pass/fail check.
+  `spctl -a -vv` is INFORMATIONAL until notarization lands (un-notarized =
+  `rejected` source note, expected); it becomes pass/fail for public release.
 
 ## Known follow-ups (not gates)
 

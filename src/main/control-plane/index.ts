@@ -104,7 +104,23 @@ export async function initControlPlane(opts: InitOptions): Promise<ControlPlaneH
       throw startErr;
     }
 
-    await persist(candidate);
+    try {
+      await persist(candidate);
+    } catch (persistErr) {
+      // Persist failed AFTER the candidate bound: roll back to the old key
+      // so the live listener matches the reported key (else every client
+      // 401s). Mirrors the bind-failure rollback above.
+      try {
+        await server.stop();
+        server = await startServer(currentKey);
+      } catch (rollbackErr) {
+        console.error(
+          '[control-plane] rotate persist failed AND old-key recovery failed',
+          { persistErr, rollbackErr },
+        );
+      }
+      throw persistErr;
+    }
     currentKey = candidate;
     return candidate;
   }

@@ -17,13 +17,13 @@ export const StatusResponseSchema = z.object({
   /** wave-monitor semver (from package.json). */
   version: z.string(),
   /** ISO-8601 instant the server bound the socket. */
-  bootAt: z.string(),
+  bootAt: z.iso.datetime(),
   /** Number of seconds the API has been running. */
   uptimeSec: z.number().int().nonnegative(),
   /** True iff a feed is currently bound. */
   connected: z.boolean(),
   /** Bound feed URL, or null when idle. */
-  feedUrl: z.string().nullable(),
+  feedUrl: z.url().nullable(),
 });
 export type StatusResponse = z.infer<typeof StatusResponseSchema>;
 

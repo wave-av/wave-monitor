@@ -6,12 +6,15 @@
 
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 
-const { handles, listeners, mockCheckForUpdates, mockRolloutAllows } = vi.hoisted(() => ({
-  handles: {} as Record<string, () => unknown>,
-  listeners: {} as Record<string, (arg: unknown) => void>,
-  mockCheckForUpdates: vi.fn(),
-  mockRolloutAllows: vi.fn(),
-}));
+const { handles, listeners, mockCheckForUpdates, mockDownloadUpdate, mockQuitAndInstall, mockRolloutAllows } =
+  vi.hoisted(() => ({
+    handles: {} as Record<string, () => unknown>,
+    listeners: {} as Record<string, (arg: unknown) => void>,
+    mockCheckForUpdates: vi.fn(),
+    mockDownloadUpdate: vi.fn(),
+    mockQuitAndInstall: vi.fn(),
+    mockRolloutAllows: vi.fn(),
+  }));
 
 vi.mock('electron', () => ({
   app: { getVersion: () => '0.1.0' },
@@ -23,6 +26,8 @@ vi.mock('electron-updater', () => ({
     autoDownload: true,
     autoInstallOnAppQuit: true,
     checkForUpdates: mockCheckForUpdates,
+    downloadUpdate: mockDownloadUpdate,
+    quitAndInstall: mockQuitAndInstall,
     on: vi.fn((event: string, fn: (arg: unknown) => void) => { listeners[event] = fn; }),
   },
 }));
@@ -37,6 +42,7 @@ import { IPC } from '@shared/ipc';
 
 beforeEach(() => {
   vi.clearAllMocks();
+  mockDownloadUpdate.mockResolvedValue([]);
   for (const k of Object.keys(handles)) delete handles[k];
   for (const k of Object.keys(listeners)) delete listeners[k];
 });
@@ -53,7 +59,7 @@ describe('updater', () => {
   it('registers the update IPC channels', () => {
     registerUpdateIpc();
     expect(Object.keys(handles).sort()).toEqual(
-      [IPC.updateStatus, IPC.checkForUpdates].sort(),
+      [IPC.updateStatus, IPC.checkForUpdates, IPC.installUpdate].sort(),
     );
   });
 
@@ -64,6 +70,19 @@ describe('updater', () => {
     expect(mockRolloutAllows).not.toHaveBeenCalled();
   });
 
+  it('reports up-to-date when the feed only offers the installed version', async () => {
+    // electron-updater returns non-null updateInfo even when nothing is
+    // newer — the version comparison (not just updateInfo presence) decides.
+    mockCheckForUpdates.mockResolvedValueOnce({
+      isUpdateAvailable: false,
+      updateInfo: { version: '0.1.0' },
+    });
+    const s = await check();
+    expect(s).toMatchObject({ state: 'up-to-date', version: '0.1.0', error: null });
+    expect(mockRolloutAllows).not.toHaveBeenCalled();
+    expect(mockDownloadUpdate).not.toHaveBeenCalled();
+  });
+
   it('reports available when the rollout gate admits this machine', async () => {
     mockCheckForUpdates.mockResolvedValueOnce({ updateInfo: { version: '0.2.0' } });
     mockRolloutAllows.mockResolvedValueOnce({ allowed: true, reason: 'in-rollout-cohort' });
@@ -72,6 +91,8 @@ describe('updater', () => {
     expect(mockRolloutAllows).toHaveBeenCalledWith(
       expect.objectContaining({ feedUrl: FEED_URL, version: '0.2.0' }),
     );
+    // Gate admission triggers the download; completion flips to `ready`.
+    expect(mockDownloadUpdate).toHaveBeenCalledTimes(1);
   });
 
   it('reports deferred (with reason) when the gate holds this machine back', async () => {

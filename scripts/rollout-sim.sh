@@ -1,7 +1,8 @@
 #!/bin/bash
 # rollout-sim.sh — staged-rollout simulation against a LOCAL feed. Bundles
-# the real src/main/updater/rollout-guard.ts (via esbuild, no new deps)
-# and sweeps it across rollout fractions served by scripts/local-feed.mjs:
+# the real src/main/updater/rollout-guard.ts (via the declared esbuild
+# devDependency — never transitive hoisting) and sweeps it across rollout
+# fractions served by scripts/local-feed.mjs:
 #   - fraction 0 admits nobody; fraction 1 admits everybody
 #   - fraction 0.25/0.5 admit ~that share over 2000 machines (±5pp)
 #   - a version the manifest does not pin is refused
@@ -14,7 +15,7 @@ WORK="$(mktemp -d /tmp/wave-monitor-rollout.XXXXXX)"
 trap 'kill ${FEED_PID:-} 2>/dev/null || true; rm -rf "$WORK"' EXIT
 
 echo "== bundle the real rollout guard"
-npx esbuild src/main/updater/rollout-guard.ts --bundle --platform=node --format=cjs \
+./node_modules/.bin/esbuild src/main/updater/rollout-guard.ts --bundle --platform=node --format=cjs \
   --outfile="$WORK/rollout-guard.cjs" --log-level=error
 node -e "const g = require('$WORK/rollout-guard.cjs'); console.log('guard buckets=' + g.BUCKETS)"
 

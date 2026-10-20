@@ -80,6 +80,10 @@ export function Monitor({ state, onChange }: Props): React.JSX.Element {
         setMeter(sample);
       });
 
+      // Peer + meter are live: tell main so `connected` (polled by the
+      // header + served on /v1/status) reflects real media, not intent.
+      await window.wave.monitor.mediaLive();
+
       onChange({
         feedUrl: draftUrl,
         connected: true,

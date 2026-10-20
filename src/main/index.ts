@@ -10,7 +10,13 @@ import { app, BrowserWindow, Menu, shell } from 'electron';
 import { electronApp, optimizer } from '@electron-toolkit/utils';
 import { pathToFileURL } from 'node:url';
 import { join } from 'node:path';
-import { getMonitorState, registerIpcHandlers, startMonitoring, stopMonitoring } from './ipc';
+import {
+  getMonitorState,
+  registerControlPlaneKeyHandlers,
+  registerIpcHandlers,
+  startMonitoring,
+  stopMonitoring,
+} from './ipc';
 import { initControlPlane, portFromEnv, type ControlPlaneHandle } from './control-plane/index';
 import { registerUpdateIpc, startBackgroundChecks } from './updater/updater';
 
@@ -24,6 +30,23 @@ const RENDERER_ENTRY_URL = pathToFileURL(RENDERER_ENTRY_FILE).href;
 const SMOKE = process.argv.includes('--smoke-test');
 
 let controlPlane: ControlPlaneHandle | null = null;
+// Set once the initial window exists; gates `activate` so a macOS launch
+// can't open a second window while startup is still awaiting the plane.
+let startupDone = false;
+
+// Single instance: concurrent first launches would mint divergent
+// control-plane keys (live listener ≠ persisted key), so the second
+// instance quits before any init runs.
+if (!app.requestSingleInstanceLock()) {
+  app.quit();
+}
+app.on('second-instance', () => {
+  const [win] = BrowserWindow.getAllWindows();
+  if (win) {
+    if (win.isMinimized()) win.restore();
+    win.focus();
+  }
+});
 
 function createWindow(): BrowserWindow {
   const win = new BrowserWindow({
@@ -215,12 +238,19 @@ void app.whenReady().then(() => {
       console.error('[control-plane] failed to start', err);
       controlPlane = null;
     }
+    // Key reveal/rotate for the settings panel (explicit operator gesture;
+    // resolves null when the plane failed to bind).
+    registerControlPlaneKeyHandlers({
+      getApiKey: () => controlPlane?.apiKey ?? null,
+      rotateApiKey: async () => (controlPlane ? controlPlane.rotate() : null),
+    });
     if (!SMOKE) startBackgroundChecks();
     createWindow();
+    startupDone = true;
   })();
 
   app.on('activate', () => {
-    if (BrowserWindow.getAllWindows().length === 0) createWindow();
+    if (startupDone && BrowserWindow.getAllWindows().length === 0) createWindow();
   });
 });
 

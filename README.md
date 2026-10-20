@@ -26,7 +26,7 @@ npm install
 npm run dev
 ```
 
-`npm run dist:mac` produces a signed `.dmg` (+ `.zip` for auto-update) for arm64 + x64.
+`npm run dist:mac` produces a `.dmg` (+ `.zip` for auto-update) for arm64 + x64 — signed + hardened-runtime when Developer ID certs are available (release CI); local builds such as `cold-boot.sh` are unsigned.
 
 ## Productization (0.1.0 ship)
 

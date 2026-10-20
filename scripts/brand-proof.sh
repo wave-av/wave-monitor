@@ -40,14 +40,22 @@ check "shared ipc re-exports the channel map" grep -q "from './channels'" src/sh
 check "updater points at the feed" grep -q "https://updates.wave.online/wave-monitor" src/main/updater/updater.ts
 check "control plane defaults to :7729" grep -q "7729" src/main/control-plane/index.ts
 
-if ls release/*.dmg >/dev/null 2>&1; then
-  DMG="$(ls -t release/*.dmg | head -1)"
-  case "$DMG" in *"WAVE Monitor"*"0.1.0"*) echo "ok: dmg carries product+version ($DMG)";; *) echo "FAIL: dmg name must carry product+version ($DMG)"; fail=1;; esac
-  APP_PLIST="release/mac-arm64/WAVE Monitor.app/Contents/Info.plist"
-  check "shipped Info.plist exists" test -f "$APP_PLIST"
-  if [ -f "$APP_PLIST" ]; then
-    BUNDLE_ID="$(/usr/libexec/PlistBuddy -c "Print CFBundleIdentifier" "$APP_PLIST" 2>/dev/null || true)"
-    check_str "shipped bundle id" "$BUNDLE_ID" "online.wave.monitor"
+if [ -d release ]; then
+  if ! ls release/*.dmg >/dev/null 2>&1; then
+    echo "FAIL: release/ exists but contains no dmg — nothing shipped to prove"; fail=1
+  else
+    DMG="$(ls -t release/*.dmg | head -1)"
+    case "$DMG" in *"WAVE Monitor"*"0.1.0"*) echo "ok: dmg carries product+version ($DMG)";; *) echo "FAIL: dmg name must carry product+version ($DMG)"; fail=1;; esac
+    # Both arch outputs ship (package.json build.mac.target): assert the
+    # bundle id in every unpacked app actually present, not just arm64.
+    PLISTS=0
+    for APP_PLIST in release/mac-*/"WAVE Monitor.app"/Contents/Info.plist; do
+      [ -f "$APP_PLIST" ] || continue
+      PLISTS=$((PLISTS + 1))
+      BUNDLE_ID="$(/usr/libexec/PlistBuddy -c "Print CFBundleIdentifier" "$APP_PLIST" 2>/dev/null || true)"
+      check_str "shipped bundle id ($APP_PLIST)" "$BUNDLE_ID" "online.wave.monitor"
+    done
+    [ "$PLISTS" -gt 0 ] || { echo "FAIL: no shipped Info.plist under release/mac-*/"; fail=1; }
   fi
 fi
 
