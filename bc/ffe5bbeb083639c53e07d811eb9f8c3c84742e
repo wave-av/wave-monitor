@@ -1,0 +1,38 @@
+rig/PROVENANCE
+  h_af5ac1a9798224 1-28
+rig/README.md
+  h_af5ac1a9798224 1-57
+rig/config-current/.buildkite/pipeline.yml
+  h_af5ac1a9798224 1-87
+rig/config-current/.buildkite/scripts/ci.sh
+  h_af5ac1a9798224 1-9
+rig/config-current/.buildkite/scripts/foundation-file-size.sh
+  h_af5ac1a9798224 1-16
+rig/config-current/.buildkite/scripts/foundation-secret-scan.sh
+  h_af5ac1a9798224 1-35
+rig/config-current/.buildkite/scripts/foundation-skill-validate.sh
+  h_af5ac1a9798224 1-70
+rig/config-current/.buildkite/scripts/foundation-verify-routes.sh
+  h_af5ac1a9798224 1-49
+rig/config-current/.buildkite/scripts/governance-enforce.sh
+  h_af5ac1a9798224 1-73
+rig/config-current/.buildkite/scripts/guard-content-policy.sh
+  h_af5ac1a9798224 1-24
+rig/config-current/.buildkite/scripts/guard-gitleaks.sh
+  h_af5ac1a9798224 1-24
+rig/config-current/.buildkite/upload.sh
+  h_af5ac1a9798224 1-5
+rig/config-current/scripts/public-repo-guard/content-policy.sh
+  h_af5ac1a9798224 1-143
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.23",
+  "base_commit_sha": "bcffe5bbeb083639c53e07d811eb9f8c3c84742e",
+  "prompts": {},
+  "humans": {
+    "h_af5ac1a9798224": {
+      "author": "Jake Fineman <jakefineman@gmail.com>"
+    }
+  }
+}
