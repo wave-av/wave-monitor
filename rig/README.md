@@ -17,7 +17,8 @@ through. Epic: WAVE-26503 (public-repo leak guarantee).
 Machine receipts go to stdout as JSON lines; the human summary goes to stderr.
 Exit 0 = no DENY-violation and no harness error. Exit 1 = at least one
 expected=DENY fixture actually EXECUTED. Exit 2 = harness error (fail closed:
-an inconclusive fixture never reads as DENY).
+an inconclusive fixture never reads as DENY) or a documented OPEN residual
+observed DENY (hardened — update rig expectations).
 
 Current config is EXPECTED to exit 1: fixtures (a)/(b)/(c)/(f) fail exactly,
 (d)/(e) document OPEN. The rig turns green as S1/S2+L1/L2 land.

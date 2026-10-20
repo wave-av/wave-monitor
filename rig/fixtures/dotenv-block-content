@@ -1,0 +1,3 @@
+# RIG FIXTURE (f): benign planted .env. Content is a synthetic placeholder
+# (zero secret values); the committed-dotenv BLOCK rule keys on the FILENAME.
+RIG_SYNTHETIC_PLACEHOLDER=not-a-secret

@@ -1,0 +1,9 @@
+#!/usr/bin/env bash
+# RIG SHIM: hermetic node. Logs; `node -p` prints $RIG_NODE_P_OUTPUT (the
+# pinned version the rig parsed from the script under test) so version
+# assertions behave deterministically. Runs nothing.
+echo "node $*" >> "${RIG_SHIMLOG:?RIG_SHIMLOG unset}"
+for a in "$@"; do
+  if [ "$a" = "-p" ]; then echo "${RIG_NODE_P_OUTPUT:-0.4.4}"; break; fi
+done
+exit 0
