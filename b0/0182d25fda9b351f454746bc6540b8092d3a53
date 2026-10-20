@@ -1,0 +1,26 @@
+.buildkite/scripts/absence-scanner.mjs
+  h_af5ac1a9798224 1-381
+.buildkite/scripts/absence-scanner.test.mjs
+  h_af5ac1a9798224 1-315
+.buildkite/scripts/probe-absence-env.mjs
+  h_af5ac1a9798224 1-119
+.buildkite/scripts/probe-absence-fs.mjs
+  h_af5ac1a9798224 1-137
+.buildkite/scripts/probe-absence-log.mjs
+  h_af5ac1a9798224 1-150
+eslint.config.js
+  h_af5ac1a9798224 11-12
+vitest.config.ts
+  h_af5ac1a9798224 10
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.23",
+  "base_commit_sha": "b00182d25fda9b351f454746bc6540b8092d3a53",
+  "prompts": {},
+  "humans": {
+    "h_af5ac1a9798224": {
+      "author": "Jake Fineman <jakefineman@gmail.com>"
+    }
+  }
+}
