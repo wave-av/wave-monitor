@@ -1,5 +1,9 @@
 // absence-scanner.test.mjs — R2 probe suite (WAVE-26519).
 //
+// Run: `npx vitest run .buildkite/tests/absence-scanner.test.mjs` from the
+// repo root (also runs under plain `npm test`, which ci.sh invokes — this
+// suite is wired into the repo's own gate).
+//
 // SHAPE HYGIENE: simulants are assembled at RUNTIME (string concatenation)
 // so this file never contains a literal matchable shape. The self-scan tests
 // below prove it: the scanner run over its own sources must report zero hits,
@@ -20,9 +24,10 @@ import {
   isSecretName,
   isCommittedDotenv,
   loadTermsFile,
-} from './absence-scanner.mjs';
+} from '../scripts/absence-scanner.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
+const PROBE_SCRIPTS = join(HERE, '..', 'scripts');
 const REPO_ROOT = join(HERE, '..', '..');
 
 // --- Runtime-assembled simulants (never literal in this file) ---------------
@@ -54,9 +59,22 @@ describe('scanLine record population (all families)', () => {
   it('passes clean prose', () => {
     expect(scanLine('hello world')).toEqual([]);
     expect(scanLine('migrate secrets to Doppler')).toEqual([]);
-    expect(scanLine('token: quarterly-rotation policy')).toEqual([]);
-    expect(scanLine('password: forgotten-flow rewrite')).toEqual([]);
-    expect(scanLine('access_token: undefined in the refresh response')).toEqual([]);
+  });
+
+  it('names secret-shaped keys without misreading their prose values', () => {
+    // secret-name fires by design (schema detector, value-independent); the
+    // no-false-positive property is that secret-assignment stays quiet on
+    // colon-prose — the measured 4.3% class upstream.
+    for (const line of [
+      'token: quarterly-rotation policy',
+      'password: forgotten-flow rewrite',
+      'access_token: undefined in the refresh response',
+    ]) {
+      const kinds = scanLine(line);
+      expect(kinds).toContain('secret-name');
+      expect(kinds).not.toContain('secret-assignment');
+      expect(kinds).not.toContain('secret-value');
+    }
   });
 
   it('flags live value shapes', () => {
@@ -220,8 +238,8 @@ describe('walker', () => {
 });
 
 describe('self-scan (committed tree proves its own cleanliness)', () => {
-  it('probe sources scan clean', () => {
-    const { hits, filesScanned } = scanRoots([HERE]);
+  it('probe sources + probe tests scan clean', () => {
+    const { hits, filesScanned } = scanRoots([PROBE_SCRIPTS, HERE]);
     expect(filesScanned).toBeGreaterThan(0);
     expect(hits).toEqual([]);
   });
@@ -237,7 +255,7 @@ describe('probe CLIs end to end', () => {
   const CLEAN_ENV = { PATH: process.env.PATH ?? '/usr/bin:/bin' };
 
   function runProbe(script, args, env) {
-    const r = spawnSync('node', [join(HERE, script), ...args], {
+    const r = spawnSync('node', [join(PROBE_SCRIPTS, script), ...args], {
       env,
       encoding: 'utf8',
       timeout: 60000,

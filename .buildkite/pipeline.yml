@@ -1,3 +1,24 @@
+# ci-smoke convention, kept: fpc-isolated agents run with no-command-eval, so
+# every step's command is exactly one checked-in script path, no arguments.
+#
+# R2 absence probes (WAVE-26519, epic WAVE-26503) — REPORT MODE (2026-10-20):
+# the three probe-* steps run on every build with `soft_fail: true`, so a FLAG
+# annotates but never breaks the build. Promotion to build-failing follows the
+# dated plan in .buildkite/absence-probes-PROMOTION.md; the flip is deleting
+# the three `soft_fail` lines once its gates hold.
+#
+# Host requirements for the probe steps (see README.md "Absence probes"
+# runbook — NOT expressible in this file):
+#   - ZERO INJECTION: the host maps no injected values to any probe-* step
+#     key, on any queue, on any build. probe-absence-env self-verifies this.
+#   - BASE-PINNED EXECUTION: the host checks out the trusted base revision
+#     (not the PR head) for the probe steps, so a fork cannot neuter the
+#     detectors it is observed by. R1 fixture (b)/(c) proves the dependency.
+#   - probe-absence-env runs on fpc-isolated-secrets DELIBERATELY: that is the
+#     queue where injection happens, so it is the only queue where asserting
+#     absence is non-vacuous. It is NOT a secret-bearing step (it receives
+#     nothing) and must run UNGATED — see PROMOTION.md P4 for the gating.py
+#     probe-key exemption this needs on the stacked pipeline.
 steps:
   - label: ":test_tube: typecheck + lint + unit tests"
     key: node-gates
@@ -5,6 +26,42 @@ steps:
     agents:
       queue: fpc-isolated
     timeout_in_minutes: 15
+    retry:
+      automatic:
+        - exit_status: -1
+          limit: 1
+
+  - label: ":lock: probe absence-env (report mode)"
+    key: probe-absence-env
+    command: .buildkite/scripts/probe-absence-env.mjs
+    agents:
+      queue: fpc-isolated-secrets
+    timeout_in_minutes: 5
+    soft_fail: true
+    retry:
+      automatic:
+        - exit_status: -1
+          limit: 1
+
+  - label: ":mag: probe absence-fs (report mode)"
+    key: probe-absence-fs
+    command: .buildkite/scripts/probe-absence-fs.mjs
+    agents:
+      queue: fpc-isolated
+    timeout_in_minutes: 10
+    soft_fail: true
+    retry:
+      automatic:
+        - exit_status: -1
+          limit: 1
+
+  - label: ":scroll: probe absence-log (report mode)"
+    key: probe-absence-log
+    command: .buildkite/scripts/probe-absence-log.mjs
+    agents:
+      queue: fpc-isolated
+    timeout_in_minutes: 10
+    soft_fail: true
     retry:
       automatic:
         - exit_status: -1
