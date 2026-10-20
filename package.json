@@ -52,7 +52,8 @@
     "vitest": "^4.1.8"
   },
   "overrides": {
-    "js-yaml": "^4.3.2"
+    "js-yaml": "^4.3.2",
+    "@xmldom/xmldom": "0.8.15"
   },
   "build": {
     "appId": "online.wave.monitor",
