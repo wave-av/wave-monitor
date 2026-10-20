@@ -6,16 +6,22 @@ set -euo pipefail
 cd "$(dirname "$0")/../.."
 
 # Reads only file paths from `git ls-files` (repo-controlled, trusted) and host strings
-# extracted via a CONSTRAINED regex from wrangler.toml (PR-controlled). The regex
-# `"[a-zA-Z0-9._-]+\.wave\.online[^"]*"` bounds matches between double-quotes; `cut -d/ -f1`
-# then keeps only the hostname-shaped prefix. Hostnames cannot contain shell metacharacters
-# under that character class, so the case-glob match is injection-safe.
+# extracted via a CONSTRAINED regex from wrangler.toml (PR-controlled). The regex bounds
+# matches between quotes (double AND single — both are valid TOML strings) and `cut -d/ -f1`
+# then keeps only the hostname-shaped prefix. NOTE: the `[^"]*`/`[^']*` suffix CAN include
+# shell metacharacters before the first `/`, so extraction alone does NOT sanitize —
+# safety comes from ALWAYS double-quoting `$h`/`$f` (never eval or unquoted expansion),
+# which the loop below does. Hosts are lowercased before matching (DNS is
+# case-insensitive; without this `Foo-EDGE.wave.online` would bypass the cases).
 fail=0
 any=0
+# Double-quoted OR single-quoted (TOML literal string) wave.online host match.
+ROUTE_RE="\"[a-zA-Z0-9._-]+\.wave\.online[^\"]*\"|'[a-zA-Z0-9._-]+\.wave\.online[^']*'"
 while IFS= read -r f; do
   any=1
   # Extract host portion (everything before the first /) from `pattern = "host/..."` lines.
-  # Handles both inline-string `pattern = "..."` and `routes = ["a.wave.online/*", ...]`.
+  # Handles inline-string `pattern = "..."`, `routes = ["a.wave.online/*", ...]`, and the
+  # single-quoted TOML literal-string twins of each (case-insensitive; lowercased below).
   while IFS= read -r h; do
     [ -z "$h" ] && continue
     case "$h" in
@@ -36,7 +42,7 @@ while IFS= read -r f; do
       *)
         echo "warning($f): URL $h unrecognized — verify against docs/conventions/url-naming.md" ;;
     esac
-  done < <(grep -oE '"[a-zA-Z0-9._-]+\.wave\.online[^"]*"' "$f" 2>/dev/null | tr -d '"' | cut -d/ -f1 | sort -u)
+  done < <(grep -oiE "$ROUTE_RE" "$f" 2>/dev/null | tr -d "\"'" | cut -d/ -f1 | tr '[:upper:]' '[:lower:]' | sort -u)
 done < <(git ls-files '*wrangler.toml' 'wrangler*.toml')
 if [ "$any" = 0 ]; then echo "no wrangler.toml — verify-routes is a no-op"; exit 0; fi
 if [ "$fail" = 0 ]; then echo "verify-routes passed"; fi

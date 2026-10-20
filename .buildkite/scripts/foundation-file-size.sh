@@ -8,6 +8,7 @@ MAX=800
 fail=0
 while IFS= read -r f; do
   grep -qxF "$f" .github/.filesize-allowlist 2>/dev/null && continue   # justified exception
+  [ -L "$f" ] && continue   # skip symlinks: a symlink has no line count of its own, and wc -l would follow it (DoS: link to /dev/zero reads until timeout)
   n=$(wc -l < "$f")
   if [ "$n" -gt "$MAX" ]; then echo "$f has $n lines (> $MAX)"; fail=1; fi
 done < <(git ls-files '*.ts' '*.tsx' '*.js' '*.py' | grep -vE '\.(types|d)\.ts$')

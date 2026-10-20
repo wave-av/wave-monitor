@@ -10,11 +10,19 @@
 set -euo pipefail
 cd "$(dirname "$0")/../.."
 
+# Cheap no-op check BEFORE touching PyYAML/pip: repos with no *SKILL.md exit
+# here, so a missing pip/PyYAML can never fail a repo the gate doesn't apply to.
+# (The python body below re-checks after filtering vendored/reference paths.)
+if [ -z "$(git ls-files '*SKILL.md')" ]; then
+  echo "no SKILL.md in repo — skill gate is a no-op"
+  exit 0
+fi
+
 if ! python3 -c 'import yaml' 2>/dev/null; then
   echo "PyYAML not in image; installing pinned pyyaml into a temp dir"
   PYDIR="$(mktemp -d)"
   trap 'rm -rf "$PYDIR"' EXIT
-  python3 -m pip install --quiet --target "$PYDIR" 'pyyaml==6.2.1'
+  python3 -m pip install --quiet --target "$PYDIR" 'pyyaml==6.0.3'
   export PYTHONPATH="$PYDIR${PYTHONPATH:+:$PYTHONPATH}"
 fi
 

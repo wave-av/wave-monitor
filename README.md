@@ -75,6 +75,38 @@ for the nine release gates (`npm run release-check` runs 1–5).
 | W3 | Multi-window: open N monitors simultaneously, drag between displays | pending |
 | W4 | Always-on-top toggle + transparent-window mode (overlay use) | pending |
 
+## Buildkite runbook (BK full-parity CI)
+
+`.buildkite/pipeline.yml` mirrors the GHA gates (lint/typecheck/vitest,
+foundation checks, governance A_BLOCK, gitleaks + content-policy guards).
+Every step's `command` is exactly one checked-in repo script path — the
+fpc-isolated agents run with `--no-command-eval`, so never inline commands.
+
+Host-side setup (not expressible in `pipeline.yml` — this section is the
+pointer target):
+
+- **Queues.** All steps run on `fpc-isolated`, except `governance-enforce`
+  and `guard-content-policy`, which run on `fpc-isolated-secrets` (the only
+  queue allowed host-injected values).
+- **Host-injected values, by step key** (never inline in the pipeline file;
+  each name must be in this repo's `repos.yaml` `secrets` allowlist):
+  - `governance-enforce`: `GH_PACKAGES_READ_TOKEN` — a token with GH-Packages
+    **read** for the `@wave-av` scope (fine-grained PAT or equivalent). The
+    script fails closed when it is absent.
+  - `guard-content-policy`: `GUARD_PRIVATE_REPOS` — comma/space-separated
+    private repo/product names for the private-repo rule. The wrapper fails
+    closed when it is unset/empty; local callers should run
+    `scripts/public-repo-guard/content-policy.sh` directly (rule stays
+    optional there).
+- **Fork trust.** The secrets-queue steps consume host credentials, so the
+  host must (a) check out the **trusted base revision** (not the PR head) for
+  `governance-enforce` / `guard-content-policy`, (b) **withhold injection**
+  for fork builds, and (c) require a manual **approval gate** before any
+  trusted re-run of a fork PR. `governance-enforce.sh` additionally refuses
+  when `BUILDKITE_PULL_REQUEST_REPO != BUILDKITE_REPO`.
+- **Pipeline settings.** Enable "Cancel intermediate builds" (the GHA
+  `concurrency` / `cancel-in-progress` equivalent).
+
 ## License
 
 [Apache-2.0](./LICENSE). No vendor-licensed binaries; all rendering uses standard
