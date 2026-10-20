@@ -1,0 +1,26 @@
+rig/PROVENANCE
+  h_af5ac1a9798224 5,7-9
+rig/config-current/.buildkite/pipeline.yml
+  h_af5ac1a9798224 15-20,22-24,27,38-57
+rig/config-current/.buildkite/scripts/guard-content-policy.sh
+  h_af5ac1a9798224 19-25
+rig/config-current/.buildkite/tests/README.md
+  h_af5ac1a9798224 1-14
+rig/config-current/.buildkite/tests/guard-content-policy-fork.bats
+  h_af5ac1a9798224 1-70
+rig/config-current/.buildkite/tests/pipeline-gating.py
+  h_af5ac1a9798224 1-189
+rig/run.sh
+  h_af5ac1a9798224 237-239
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.23",
+  "base_commit_sha": "1635bcfbb5f64c89fe8d44c5c1d9a5f216ce7490",
+  "prompts": {},
+  "humans": {
+    "h_af5ac1a9798224": {
+      "author": "Jake Fineman <jakefineman@gmail.com>"
+    }
+  }
+}
