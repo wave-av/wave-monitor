@@ -1,3 +1,14 @@
+# ci-smoke convention, kept: fpc-isolated agents run with no-command-eval, so
+# every step's command is exactly one checked-in script path, no arguments.
+# Retry follows the wave-ci invariant (templates/_lib/step.mjs): automatic
+# retry on agent loss only, explicit manual block. Pipeline-level timeouts are
+# dropped by Buildkite, so each step carries its own.
+#
+# Host-side requirements (NOT expressible in this file — see README.md):
+#   * governance-enforce and guard-content-policy need host-injected values by
+#     step key -> those two steps run on queue fpc-isolated-secrets.
+#   * Enable "Cancel intermediate builds" in the pipeline settings (the GHA
+#     concurrency/cancel-in-progress equivalent).
 steps:
   - label: ":test_tube: typecheck + lint + unit tests"
     key: node-gates
@@ -9,3 +20,121 @@ steps:
       automatic:
         - exit_status: -1
           limit: 1
+        - signal_reason: agent_stop
+          limit: 1
+      manual:
+        allowed: true
+        permit_on_passed: false
+
+  - label: ":mag: foundation secret-scan"
+    key: foundation-secret-scan
+    command: .buildkite/scripts/foundation-secret-scan.sh
+    agents:
+      queue: fpc-isolated
+    timeout_in_minutes: 10
+    retry:
+      automatic:
+        - exit_status: -1
+          limit: 1
+        - signal_reason: agent_stop
+          limit: 1
+      manual:
+        allowed: true
+        permit_on_passed: false
+
+  - label: ":straight_ruler: foundation file-size gate"
+    key: foundation-file-size
+    command: .buildkite/scripts/foundation-file-size.sh
+    agents:
+      queue: fpc-isolated
+    timeout_in_minutes: 10
+    retry:
+      automatic:
+        - exit_status: -1
+          limit: 1
+        - signal_reason: agent_stop
+          limit: 1
+      manual:
+        allowed: true
+        permit_on_passed: false
+
+  - label: ":scroll: foundation skill-validate"
+    key: foundation-skill-validate
+    command: .buildkite/scripts/foundation-skill-validate.sh
+    agents:
+      queue: fpc-isolated
+    timeout_in_minutes: 5
+    retry:
+      automatic:
+        - exit_status: -1
+          limit: 1
+        - signal_reason: agent_stop
+          limit: 1
+      manual:
+        allowed: true
+        permit_on_passed: false
+
+  - label: ":globe_with_meridians: foundation verify-routes"
+    key: foundation-verify-routes
+    command: .buildkite/scripts/foundation-verify-routes.sh
+    agents:
+      queue: fpc-isolated
+    timeout_in_minutes: 5
+    retry:
+      automatic:
+        - exit_status: -1
+          limit: 1
+        - signal_reason: agent_stop
+          limit: 1
+      manual:
+        allowed: true
+        permit_on_passed: false
+
+  - label: ":shield: governance A_BLOCK enforce"
+    key: governance-enforce
+    command: .buildkite/scripts/governance-enforce.sh
+    if: build.pull_request.id != null
+    agents:
+      queue: fpc-isolated-secrets
+    timeout_in_minutes: 10
+    retry:
+      automatic:
+        - exit_status: -1
+          limit: 1
+        - signal_reason: agent_stop
+          limit: 1
+      manual:
+        allowed: true
+        permit_on_passed: false
+
+  - label: ":key: guard gitleaks"
+    key: guard-gitleaks
+    command: .buildkite/scripts/guard-gitleaks.sh
+    agents:
+      queue: fpc-isolated
+    timeout_in_minutes: 10
+    retry:
+      automatic:
+        - exit_status: -1
+          limit: 1
+        - signal_reason: agent_stop
+          limit: 1
+      manual:
+        allowed: true
+        permit_on_passed: false
+
+  - label: ":clipboard: guard content-policy"
+    key: guard-content-policy
+    command: .buildkite/scripts/guard-content-policy.sh
+    agents:
+      queue: fpc-isolated-secrets
+    timeout_in_minutes: 10
+    retry:
+      automatic:
+        - exit_status: -1
+          limit: 1
+        - signal_reason: agent_stop
+          limit: 1
+      manual:
+        allowed: true
+        permit_on_passed: false
