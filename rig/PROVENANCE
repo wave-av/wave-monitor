@@ -1,0 +1,28 @@
+# R1 drill-rig provenance (WAVE-26518, epic WAVE-26503)
+
+## config-current/ — the config under test
+- Source ref: origin/ci/bk-full-parity (PR #119, sibling builder owns the branch)
+- Pinned SHA: 211941fc02072c91e9a56d553bba144dbb99311d
+- Snapshotted: 2026-10-20 (files: .buildkite/ + scripts/public-repo-guard/)
+- Method: read-only `git show origin/ci/bk-full-parity:<path>` (branch never
+  checked out or modified by this lane)
+- Re-snapshot: re-run the `git show` loop from the lane worktree after the
+  sibling lands changes, then update the SHA + date lines above and re-run
+  rig/run.sh. Receipts quote the SHA so drift is visible.
+
+## config-patched/ — demonstration patch (R1-owned)
+- Base: config-current/ at the SHA above.
+- Delta (this lane): guard-content-policy.sh gains an in-script fork refusal
+  (S1-style text). The rig runs it in two script-provenance modes:
+  scripts-from-PR (fork-deleted refusal still loses) vs scripts-from-base
+  (trusted host checkout wins) — proving the host-checkout dependency.
+- This is a DEMONSTRATION patch for acceptance (4), not the S1 fix. S1
+  (WAVE-26505) owns the real refusal + negative test.
+
+## Fidelity rules
+- Step scripts execute for real (bash), never re-implemented. Network-touching
+  tools (git fetch, npm, node, curl, buildkite-agent) are hermetic shims that
+  log invocations; verdicts key on refusal-before-execution vs proceeded-past.
+- Secrets are synthetic canaries (RIGCANARY-<KIND>-<hex>), redacted from all
+  receipts. Zero live credentials, no network (docker --network none; local
+  backend shadows network tools via PATH shims).

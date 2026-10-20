@@ -1,0 +1,87 @@
+# ci-smoke convention, kept: fpc-isolated agents run with no-command-eval, so
+# every step's command is exactly one checked-in script path, no arguments.
+# Retry follows the wave-ci invariant (templates/_lib/step.mjs): automatic
+# retry on agent loss only, explicit manual block. Pipeline-level timeouts are
+# dropped by Buildkite, so each step carries its own.
+#
+# Host-side requirements (NOT expressible in this file — see README.md
+# "Buildkite runbook"): host-injected values by step key on queue
+# fpc-isolated-secrets, trusted base-revision checkout for the secrets steps,
+# injection withheld for fork builds (+ approval-gated trusted re-runs), and
+# "Cancel intermediate builds" in the pipeline settings (the GHA
+# concurrency/cancel-in-progress equivalent).
+# Retry policy is defined once as &retry-agent-loss on the first step and
+# reused via *retry-agent-loss so steps cannot drift apart.
+steps:
+  - label: ":test_tube: typecheck + lint + unit tests"
+    key: node-gates
+    command: .buildkite/scripts/ci.sh
+    agents:
+      queue: fpc-isolated
+    timeout_in_minutes: 15
+    retry: &retry-agent-loss
+      automatic:
+        - exit_status: -1
+          limit: 1
+        - signal_reason: agent_stop
+          limit: 1
+      manual:
+        allowed: true
+        permit_on_passed: false
+
+  - label: ":mag: foundation secret-scan"
+    key: foundation-secret-scan
+    command: .buildkite/scripts/foundation-secret-scan.sh
+    agents:
+      queue: fpc-isolated
+    timeout_in_minutes: 10
+    retry: *retry-agent-loss
+
+  - label: ":straight_ruler: foundation file-size gate"
+    key: foundation-file-size
+    command: .buildkite/scripts/foundation-file-size.sh
+    agents:
+      queue: fpc-isolated
+    timeout_in_minutes: 10
+    retry: *retry-agent-loss
+
+  - label: ":scroll: foundation skill-validate"
+    key: foundation-skill-validate
+    command: .buildkite/scripts/foundation-skill-validate.sh
+    agents:
+      queue: fpc-isolated
+    timeout_in_minutes: 5
+    retry: *retry-agent-loss
+
+  - label: ":globe_with_meridians: foundation verify-routes"
+    key: foundation-verify-routes
+    command: .buildkite/scripts/foundation-verify-routes.sh
+    agents:
+      queue: fpc-isolated
+    timeout_in_minutes: 5
+    retry: *retry-agent-loss
+
+  - label: ":shield: governance A_BLOCK enforce"
+    key: governance-enforce
+    command: .buildkite/scripts/governance-enforce.sh
+    if: build.pull_request.id != null
+    agents:
+      queue: fpc-isolated-secrets
+    timeout_in_minutes: 10
+    retry: *retry-agent-loss
+
+  - label: ":key: guard gitleaks"
+    key: guard-gitleaks
+    command: .buildkite/scripts/guard-gitleaks.sh
+    agents:
+      queue: fpc-isolated
+    timeout_in_minutes: 10
+    retry: *retry-agent-loss
+
+  - label: ":clipboard: guard content-policy"
+    key: guard-content-policy
+    command: .buildkite/scripts/guard-content-policy.sh
+    agents:
+      queue: fpc-isolated-secrets
+    timeout_in_minutes: 10
+    retry: *retry-agent-loss
