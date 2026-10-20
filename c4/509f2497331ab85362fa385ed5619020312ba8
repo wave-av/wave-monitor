@@ -1,0 +1,14 @@
+.buildkite/upload.sh
+  h_af5ac1a9798224 1-5
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.23",
+  "base_commit_sha": "c4509f2497331ab85362fa385ed5619020312ba8",
+  "prompts": {},
+  "humans": {
+    "h_af5ac1a9798224": {
+      "author": "Jake Fineman <jakefineman@gmail.com>"
+    }
+  }
+}
