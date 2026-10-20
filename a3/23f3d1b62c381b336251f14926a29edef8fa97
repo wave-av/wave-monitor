@@ -1,0 +1,20 @@
+package-lock.json
+  h_af5ac1a9798224 13,4160-4162,5465-5467
+package.json
+  h_af5ac1a9798224 34,60-62
+scripts/local-feed.mjs
+  h_af5ac1a9798224 15-17
+src/shared/ipc.ts
+  h_af5ac1a9798224 13-20
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.23",
+  "base_commit_sha": "a323f3d1b62c381b336251f14926a29edef8fa97",
+  "prompts": {},
+  "humans": {
+    "h_af5ac1a9798224": {
+      "author": "Jake Fineman <jakefineman@gmail.com>"
+    }
+  }
+}
