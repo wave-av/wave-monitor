@@ -234,7 +234,9 @@ fix_f() {
   local be; be="$(rig_pick_backend yes)" || {
     echo "(empty log)" > "$out"
     emit f "$cfg" DENY ERROR "$RIG_BACKEND" "$out" "backend unavailable"; return; }
-  rig_step_env fork "$CANARY_GPR" "" > "$envf"
+  # Same-repo env: the S1 fork refusal must NOT fire here — (f) needs the
+  # guard to actually scan (and fail on the planted violation).
+  rig_step_env same "$CANARY_GPR" "" > "$envf"
   local rc=0
   run_step "$be" "$co" ".buildkite/scripts/guard-content-policy.sh" \
     "$out" "$envf" "" "$RIG_WORK/shim-f.log" "$RIG_WORK/cap-f" || rc=$?

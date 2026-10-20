@@ -2,8 +2,11 @@
 
 ## config-current/ — the config under test
 - Source ref: origin/ci/bk-full-parity (PR #119, sibling builder owns the branch)
-- Pinned SHA: 211941fc02072c91e9a56d553bba144dbb99311d
+- Pinned SHA: 796755bfc945f86b2ca8bd2f13e35c89d8b3b618
 - Snapshotted: 2026-10-20 (files: .buildkite/ + scripts/public-repo-guard/)
+- History: first pinned 211941f (pre-S1/S2: rig showed (a)/(b)/(c)/(f) fail);
+  re-snapshotted at 796755b after sibling landed S1 (WAVE-26505) + S2
+  (WAVE-26506) — rig now shows (a)/(f) DENY, (b)/(c) still EXECUTED.
 - Method: read-only `git show origin/ci/bk-full-parity:<path>` (branch never
   checked out or modified by this lane)
 - Re-snapshot: re-run the `git show` loop from the lane worktree after the

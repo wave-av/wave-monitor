@@ -16,6 +16,13 @@
 set -euo pipefail
 cd "$(dirname "$0")/../.."
 
+if [ -n "${BUILDKITE_PULL_REQUEST_REPO:-}" ] && [ -n "${BUILDKITE_REPO:-}" ] \
+   && [ "$BUILDKITE_PULL_REQUEST_REPO" != "$BUILDKITE_REPO" ]; then
+  echo "fork PR detected (head $BUILDKITE_PULL_REQUEST_REPO != pipeline $BUILDKITE_REPO) — refusing to run with host-injected credentials."
+  echo "Host must run the trusted base-revision script or approve a trusted run; see README.md (Buildkite runbook)."
+  exit 2
+fi
+
 command -v rg >/dev/null 2>&1 || {
   echo "ripgrep (rg) is required but not installed in the agent image — failing closed."
   exit 2
