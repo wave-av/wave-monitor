@@ -59,7 +59,7 @@ npm run dev
 
 ## License
 
-[MIT](./LICENSE). No vendor-licensed binaries; all rendering uses standard
+[Apache-2.0](./LICENSE). No vendor-licensed binaries; all rendering uses standard
 WebRTC + Web Audio APIs.
 
 ---
