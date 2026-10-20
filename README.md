@@ -102,7 +102,8 @@ pointer target):
   host must (a) check out the **trusted base revision** (not the PR head) for
   `governance-enforce` / `guard-content-policy`, (b) **withhold injection**
   for fork builds, and (c) require a manual **approval gate** before any
-  trusted re-run of a fork PR. `governance-enforce.sh` additionally refuses
+  trusted re-run of a fork PR. Both `governance-enforce.sh` and
+  `guard-content-policy.sh` additionally refuse
   when `BUILDKITE_PULL_REQUEST_REPO != BUILDKITE_REPO`.
 - **Pipeline settings.** Enable "Cancel intermediate builds" (the GHA
   `concurrency` / `cancel-in-progress` equivalent).
