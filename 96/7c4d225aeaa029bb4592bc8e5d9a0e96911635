@@ -1,0 +1,28 @@
+.buildkite/pipeline.yml
+  h_af5ac1a9798224 1-11,23-140
+.buildkite/scripts/foundation-file-size.sh
+  h_af5ac1a9798224 1-15
+.buildkite/scripts/foundation-secret-scan.sh
+  h_af5ac1a9798224 1-15
+.buildkite/scripts/foundation-skill-validate.sh
+  h_af5ac1a9798224 1-62
+.buildkite/scripts/foundation-verify-routes.sh
+  h_af5ac1a9798224 1-43
+.buildkite/scripts/governance-enforce.sh
+  h_af5ac1a9798224 1-43
+.buildkite/scripts/guard-content-policy.sh
+  h_af5ac1a9798224 1-24
+.buildkite/scripts/guard-gitleaks.sh
+  h_af5ac1a9798224 1-24
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.23",
+  "base_commit_sha": "967c4d225aeaa029bb4592bc8e5d9a0e96911635",
+  "prompts": {},
+  "humans": {
+    "h_af5ac1a9798224": {
+      "author": "Jake Fineman <jakefineman@gmail.com>"
+    }
+  }
+}
