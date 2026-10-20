@@ -1,0 +1,16 @@
+.buildkite/pipeline.yml
+  h_af5ac1a9798224 1-11
+.buildkite/scripts/ci.sh
+  h_af5ac1a9798224 1-9
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.23",
+  "base_commit_sha": "ce5e9af7d7bcbd333b57f677d07f206aeebbcd42",
+  "prompts": {},
+  "humans": {
+    "h_af5ac1a9798224": {
+      "author": "Jake Fineman <jakefineman@gmail.com>"
+    }
+  }
+}
