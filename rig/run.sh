@@ -48,7 +48,7 @@ want() { # want FIX CFG -> 0 if selected
   case "$CONFIGS" in
     all) return 0 ;;
     current) [ "$2" = "current" ] ;;
-    patched) [ "$2" != "current" ] ;;
+    patched) [ "$2" = "patched-base" ] ;;  # acceptance 4: base-revision proof only (README); patched-pr runs under --config all
   esac
 }
 
