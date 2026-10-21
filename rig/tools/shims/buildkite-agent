@@ -1,0 +1,11 @@
+#!/usr/bin/env bash
+# RIG SHIM: buildkite-agent. `pipeline upload <file>` captures the file the
+# step WOULD upload so the rig can diff it against the base revision.
+# Everything else is denied (fail closed).
+echo "buildkite-agent $*" >> "${RIG_SHIMLOG:?RIG_SHIMLOG unset}"
+if [ "${1:-}" = "pipeline" ] && [ "${2:-}" = "upload" ] && [ -n "${3:-}" ]; then
+  cp "$3" "${RIG_CAPTURE_DIR:?RIG_CAPTURE_DIR unset}/uploaded-pipeline.yml" || exit 1
+  echo "uploaded $3" >> "$RIG_SHIMLOG"
+  exit 0
+fi
+exit 1

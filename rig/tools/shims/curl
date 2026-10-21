@@ -1,0 +1,5 @@
+#!/usr/bin/env bash
+# RIG SHIM: curl always fails closed. Nothing in the fixtures may need the
+# network; an invocation is logged and denied.
+echo "curl $* (DENIED: no network in rig)" >> "${RIG_SHIMLOG:?RIG_SHIMLOG unset}"
+exit 1
