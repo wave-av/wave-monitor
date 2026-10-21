@@ -46,6 +46,7 @@ def parse(pipeline_path):
         raw = f.read().splitlines()
     steps, order = [], []
     cur, in_steps, parent4 = None, False, None
+    pending = {}  # order position -> step index, for keyless head lines
     for ln, line in enumerate(raw, 1):
         s = _strip_comment(line)
         if not s.strip():
@@ -85,7 +86,10 @@ def parse(pipeline_path):
             if cur["key"]:
                 order.append(("step", cur["key"]))
             else:
-                order.append(("step", f"__idx{cur['index']}"))
+                # Positional placeholder (not a matchable string): a genuine
+                # step key can never collide with it.
+                pending[len(order)] = cur["index"]
+                order.append(("step", None))
             parent4 = None
             continue
         if ind == 2 and txt == "-":
@@ -104,6 +108,9 @@ def parse(pipeline_path):
             k, v = k.strip(), v.strip().strip("'\"")
             parent4 = k
             if k == "agents":
+                if v:
+                    raise PipelineError(f"{pipeline_path}:{ln}: inline agents "
+                                        f"mapping outside subset: {v[:40]}")
                 continue
             if k in ("label", "key", "command"):
                 cur[k] = v
@@ -117,6 +124,12 @@ def parse(pipeline_path):
                 cur["cond"] = v
                 continue
             if k == "depends_on":
+                if any(c in v for c in "{}:"):
+                    # Inline/block dependency MAPS ({step: x}) carry gating
+                    # meaning the string-list model cannot represent — fail
+                    # closed rather than silently dropping the edge.
+                    raise PipelineError(f"{pipeline_path}:{ln}: depends_on map "
+                                        f"outside subset: {v[:40]}")
                 if v.startswith("["):
                     cur["depends_on"] = [x.strip().strip("'\"")
                                          for x in v.strip("[]").split(",")
@@ -148,9 +161,9 @@ def parse(pipeline_path):
                                 f"{txt[:40]}")
     # resolve order placeholders for steps whose key came after the head line
     fixed = []
-    for typ, ref in order:
-        if typ == "step" and ref.startswith("__idx"):
-            fixed.append((typ, steps[int(ref[5:])]["key"]))
+    for pos, (typ, ref) in enumerate(order):
+        if pos in pending:
+            fixed.append((typ, steps[pending[pos]]["key"]))
         else:
             fixed.append((typ, ref))
     for st in steps:
@@ -173,14 +186,10 @@ def _cond_excludes(cond, env_kind):
     pull_request null-check pattern is modeled; anything else fails closed."""
     if cond is None:
         return False
-    if "pull_request" in cond and env_kind == "nonpr":
-        # e.g. `if: build.pull_request.id != null` — false on non-PR builds.
-        # Any pull_request-mentioning cond on a non-PR build is treated as
-        # excluding ONLY the != null shape; other shapes fail closed.
-        if re.search(r"pull_request\.id\s*!=\s*null", cond):
-            return True
-        raise PipelineError(f"unmodeled pull_request cond on non-PR: {cond}")
-    return False
+    # e.g. `if: build.pull_request.id != null` — false on non-PR builds.
+    if re.fullmatch(r"\s*build\.pull_request\.id\s*!=\s*null\s*", cond):
+        return env_kind == "nonpr"
+    raise PipelineError(f"unmodeled condition: {cond}")
 
 
 def schedule(parsed, failed_keys, env_kind="pr"):
@@ -190,10 +199,12 @@ def schedule(parsed, failed_keys, env_kind="pr"):
     started, blocked, edges = [], [], []
     by_key = {s["key"]: s for s in parsed["steps"]}
     seen_failure = False
+    seen_failed = set()
     for typ, ref in parsed["order"]:
         if typ == "wait":
-            # A wait after any failure blocks everything downstream.
-            if failed_keys:
+            # A wait blocks downstream only when a step BEFORE it failed —
+            # a later failure must not rewrite steps that already started.
+            if seen_failed:
                 seen_failure = True
             continue
         st = by_key[ref]
@@ -205,6 +216,8 @@ def schedule(parsed, failed_keys, env_kind="pr"):
             blocked.append(ref)
             edges.append((ref, "excluded-by-if"))
             continue
+        if ref in failed_keys:
+            seen_failed.add(ref)
         dep_failed = [d for d in st["depends_on"] if d in failed_keys]
         if dep_failed:
             blocked.append(ref)

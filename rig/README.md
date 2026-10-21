@@ -20,8 +20,11 @@ expected=DENY fixture actually EXECUTED. Exit 2 = harness error (fail closed:
 an inconclusive fixture never reads as DENY) or a documented OPEN residual
 observed DENY (hardened — update rig expectations).
 
-Current config is EXPECTED to exit 1: fixtures (a)/(b)/(c)/(f) fail exactly,
-(d)/(e) document OPEN. The rig turns green as S1/S2+L1/L2 land.
+Current config is EXPECTED to exit 1: fixtures (b)/(c) are EXECUTED (S1
+text is fork-deletable without a base-revision checkout; pipeline upload is
+unvalidated), while (a)/(f) return DENY and (d)/(e) document OPEN. Full
+green needs the host-side fixes (base-revision script checkout, pipeline
+pinning) plus (d)/(e) residual hardening.
 
 ## Fixtures
 
@@ -47,12 +50,17 @@ KNOWN RESIDUAL). Anything else = ERROR (fail closed).
   BUILDKITE_* env, synthetic canary secrets redacted from receipts.
 - Execution backends: `docker` (pinned image, `--network none`, read-only
   checkout mount) where the image carries the needed tools, else `local`
-  (PATH shims shadow every network-touching tool). Receipts record the backend.
-- No live credentials anywhere; no network access by construction.
+  (PATH shims shadow the known network-touching tools, but the host network
+  stays reachable — e.g. via bash `/dev/tcp` or unshimmed binaries).
+  Receipts record the backend.
+- No live credentials anywhere: every secret in the rig is a synthetic
+  canary, so even a local-backend egress could only exfiltrate worthless
+  values. True network isolation holds for `docker` runs only
+  (`--network none`); `local` runs isolate by shims + synthetic-only secrets.
 
 ## Hardening links (residuals)
 
 - (d) same-repo branches: needs identity gating — epic WAVE-26503 residual.
 - (e) non-PR builds: needs fail-closed default — epic WAVE-26503 residual.
-- (f) guard gating: S2 WAVE-26506 must add wait/depends_on (redteam R-d).
+- (f) guard gating: S2 WAVE-26506 added wait/depends_on — now DENY, proving the barrier works (redteam R-d closed).
 - Durable guarantee: L1 WAVE-26516 lint + L2 WAVE-26517 template injection.

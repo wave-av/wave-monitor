@@ -33,7 +33,9 @@ CANARY_GPR="$(rig_canary GUARDPRIVATEREPOS)"
 CANARY_GH="$(rig_canary GHPACKAGESREAD)"
 export RIG_CANARIES="$CANARY_GPR $CANARY_GH"
 
-PIN_SHA="$(grep -Eo 'Pinned SHA: [0-9a-f]+' "$RIG_DIR/PROVENANCE" | awk '{print $3}')"
+PIN_SHA="$(grep -Eo 'Pinned SHA: [0-9a-f]+' "$RIG_DIR/PROVENANCE" | awk '{print $3}' || true)"
+[ -n "$PIN_SHA" ] || { echo "rig: no Pinned SHA in PROVENANCE" >&2; exit 2; }
+export RIG_PIN_SHA="$PIN_SHA"  # quoted by every JSONL receipt (PROVENANCE)
 RESULTS=()  # "fixture|config|expected|actual"
 
 emit() { # FIX CFG EXP ACT BACKEND LOG NOTE [HARD]
@@ -248,17 +250,24 @@ fix_f() {
     emit f "$cfg" DENY ERROR "$be" "$out" \
       "guard did not fail on planted violation (rc=$rc)"; return
   fi
-  local sched
+  # Only the guard this fixture actually ran-and-failed is marked failed: the
+  # scheduler must test guard-content-policy's OWN barrier, not block at the
+  # earlier wait. The failed guard itself ran by construction, so it is
+  # excluded from the leak set (same failed-key semantics as
+  # .buildkite/tests/pipeline-gating.py check 4).
+  local sched failed="guard-content-policy"
   sched="$(python3 "$RIG_ANALYSIS/pipeline.py" schedule \
-    "$src/.buildkite/pipeline.yml" "guard-gitleaks,guard-content-policy" pr)" || {
+    "$src/.buildkite/pipeline.yml" "$failed" pr)" || {
     echo "$sched" >> "$out"
     emit f "$cfg" DENY ERROR "$be" "$out" "schedule analysis failed"; return; }
-  echo "--- schedule with guards failed ---" >> "$out"; echo "$sched" >> "$out"
-  if python3 -c "import json,sys; s=json.load(sys.stdin);
-sys.exit(0 if set(s['secret']) & set(s['started']) else 1)" <<<"$sched"; then
+  echo "--- schedule with guard failed: $failed ---" >> "$out"; echo "$sched" >> "$out"
+  if FAILED="$failed" python3 -c "import json,os,sys; s=json.load(sys.stdin);
+f=set(os.environ['FAILED'].split(','));
+sys.exit(0 if set(s['secret']) & set(s['started']) - f else 1)" <<<"$sched"; then
     local started
-    started="$(python3 -c "import json,sys; s=json.load(sys.stdin);
-print(','.join(sorted(set(s['secret']) & set(s['started']))))" <<<"$sched")"
+    started="$(FAILED="$failed" python3 -c "import json,os,sys; s=json.load(sys.stdin);
+f=set(os.environ['FAILED'].split(','));
+print(','.join(sorted(set(s['secret']) & set(s['started']) - f)))" <<<"$sched")"
     emit f "$cfg" DENY EXECUTED "$be" "$out" \
       "guard failed (rc=$rc) yet secret steps still start: $started (no wait/depends_on)"
   else
@@ -278,6 +287,10 @@ want e current && fix_de e nonpr OPEN "WAVE-26503 residual: non-PR builds skip r
 want f current && fix_f
 
 # ------------------------------------------------------------------ summary
+if [ "${#RESULTS[@]}" -eq 0 ]; then
+  echo "rig: selection ran zero fixtures (--config $CONFIGS --fixture '${ONLY_FIX:-all}') — refusing to report CLEAN" >&2
+  exit 2
+fi
 viol=0; err=0; hard=0
 {
 echo ""

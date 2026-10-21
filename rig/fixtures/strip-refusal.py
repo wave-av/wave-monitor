@@ -15,11 +15,20 @@ start = src.find('if [ -n "${BUILDKITE_PULL_REQUEST_REPO')
 if start < 0:
     print("strip-refusal: refusal block not found — premise broken", file=sys.stderr)
     sys.exit(2)
-end = src.find("\nfi\n", start)
+# The closing `fi` must sit at the SAME indentation as the opening `if` —
+# a column-0-only search would over-delete through an indented block up to a
+# later unrelated `fi`.
+linestart = src.rfind("\n", 0, start) + 1
+indent = src[linestart:start]
+if indent.strip(" \t"):
+    print("strip-refusal: refusal opener not at line start", file=sys.stderr)
+    sys.exit(2)
+term = f"\n{indent}fi\n"
+end = src.find(term, start)
 if end < 0:
     print("strip-refusal: refusal terminator not found", file=sys.stderr)
     sys.exit(2)
-out = src[:start] + src[end + len("\nfi\n"):]
+out = src[:start] + src[end + len(term):]
 if "BUILDKITE_PULL_REQUEST_REPO" in out:
     print("strip-refusal: refusal remnants remain", file=sys.stderr)
     sys.exit(2)

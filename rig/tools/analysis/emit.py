@@ -17,8 +17,9 @@ def main(argv):
     try:
         with open(logpath, errors="replace") as f:
             lines = f.read().splitlines()
-    except OSError:
-        lines = []
+    except OSError as e:
+        print(f"emit: cannot read step log {logpath}: {e}", file=sys.stderr)
+        return 2
     red = []
     for ln in lines:
         for c in cans:
@@ -32,11 +33,13 @@ def main(argv):
         excerpt = red[-8:] if red else ["(empty log)"]
     rec = {"fixture": fix, "config": config, "expected": expect,
            "actual": actual, "backend": backend,
+           "pinned_sha": os.environ.get("RIG_PIN_SHA", ""),
            "log_excerpt": "\n".join(excerpt), "note": note}
     if hard:
         rec["hardening"] = hard
     print(json.dumps(rec))
+    return 0
 
 
 if __name__ == "__main__":
-    main(sys.argv)
+    sys.exit(main(sys.argv))

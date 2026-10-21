@@ -27,5 +27,7 @@
   tools (git fetch, npm, node, curl, buildkite-agent) are hermetic shims that
   log invocations; verdicts key on refusal-before-execution vs proceeded-past.
 - Secrets are synthetic canaries (RIGCANARY-<KIND>-<hex>), redacted from all
-  receipts. Zero live credentials, no network (docker --network none; local
-  backend shadows network tools via PATH shims).
+  receipts. Zero live credentials. True network isolation holds for docker
+  runs only (--network none); the local backend shadows known network tools
+  via PATH shims but the host network stays reachable, so local-run safety
+  rests on synthetic-only secrets (nothing worth exfiltrating).

@@ -4,6 +4,6 @@
 # assertions behave deterministically. Runs nothing.
 echo "node $*" >> "${RIG_SHIMLOG:?RIG_SHIMLOG unset}"
 for a in "$@"; do
-  if [ "$a" = "-p" ]; then echo "${RIG_NODE_P_OUTPUT:-0.4.4}"; break; fi
+  if [ "$a" = "-p" ]; then echo "${RIG_NODE_P_OUTPUT:?RIG_NODE_P_OUTPUT unset}"; break; fi
 done
 exit 0

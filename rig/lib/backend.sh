@@ -9,8 +9,15 @@ RIG_BACKEND="${RIG_BACKEND:-auto}"
 
 rig_workdir() {
   local w
-  w="$(mktemp -d "${TMPDIR:-/tmp}/r1rig.XXXXXX")"
-  mkdir -p "$w/co" "$w/tmp" "$w/results"
+  w="$(mktemp -d "${TMPDIR:-/tmp}/r1rig.XXXXXX")" || {
+    echo "rig_workdir: mktemp failed" >&2
+    return 2
+  }
+  mkdir -p "$w/co" "$w/tmp" "$w/results" || {
+    echo "rig_workdir: cannot create workdir dirs under $w" >&2
+    rm -rf "$w"
+    return 2
+  }
   echo "$w"
 }
 
@@ -45,6 +52,10 @@ rig_step_env() {
       ;;
     nonpr)
       printf '%s\n' "BUILDKITE_BRANCH=main"
+      ;;
+    *)
+      echo "rig_step_env: bad KIND '$kind' (want fork|same|nonpr)" >&2
+      return 2
       ;;
   esac
   if [ -n "$gpr" ]; then printf '%s\n' "GUARD_PRIVATE_REPOS=$gpr"; fi
@@ -90,7 +101,7 @@ rig_run_local() {
   mapfile -t evars < "$envfile"
   : > "$shimlog"; mkdir -p "$cap"
   ( cd "$co" && env -i \
-      "PATH=$RIG_SHIMS:/opt/homebrew/bin:/usr/bin:/bin" \
+      "PATH=$RIG_SHIMS:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin" \
       "HOME=$co" "TMPDIR=$RIG_WORK/tmp" \
       "RIG_SHIMLOG=$shimlog" "RIG_CAPTURE_DIR=$cap" \
       "RIG_NODE_P_OUTPUT=$nodepv" \

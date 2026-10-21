@@ -12,13 +12,19 @@
 # concurrency/cancel-in-progress equivalent).
 # Retry policy is defined once as &retry-agent-loss on the first step and
 # reused via *retry-agent-loss so steps cannot drift apart.
+#
+# Ordering is load-bearing (WAVE-26506): the two leak guards are the first
+# two command steps, each followed by a `wait` barrier, so every
+# secret-bearing step (queue fpc-isolated-secrets) topologically depends on
+# BOTH guards — positions alone gate nothing. Do not remove a barrier or
+# move a secrets step above one without updating .buildkite/tests/pipeline-gating.py.
 steps:
-  - label: ":test_tube: typecheck + lint + unit tests"
-    key: node-gates
-    command: .buildkite/scripts/ci.sh
+  - label: ":key: guard gitleaks"
+    key: guard-gitleaks
+    command: .buildkite/scripts/guard-gitleaks.sh
     agents:
       queue: fpc-isolated
-    timeout_in_minutes: 15
+    timeout_in_minutes: 10
     retry: &retry-agent-loss
       automatic:
         - exit_status: -1
@@ -28,6 +34,26 @@ steps:
       manual:
         allowed: true
         permit_on_passed: false
+
+  - wait
+
+  - label: ":clipboard: guard content-policy"
+    key: guard-content-policy
+    command: .buildkite/scripts/guard-content-policy.sh
+    agents:
+      queue: fpc-isolated-secrets
+    timeout_in_minutes: 10
+    retry: *retry-agent-loss
+
+  - wait
+
+  - label: ":test_tube: typecheck + lint + unit tests"
+    key: node-gates
+    command: .buildkite/scripts/ci.sh
+    agents:
+      queue: fpc-isolated
+    timeout_in_minutes: 15
+    retry: *retry-agent-loss
 
   - label: ":mag: foundation secret-scan"
     key: foundation-secret-scan
@@ -65,22 +91,6 @@ steps:
     key: governance-enforce
     command: .buildkite/scripts/governance-enforce.sh
     if: build.pull_request.id != null
-    agents:
-      queue: fpc-isolated-secrets
-    timeout_in_minutes: 10
-    retry: *retry-agent-loss
-
-  - label: ":key: guard gitleaks"
-    key: guard-gitleaks
-    command: .buildkite/scripts/guard-gitleaks.sh
-    agents:
-      queue: fpc-isolated
-    timeout_in_minutes: 10
-    retry: *retry-agent-loss
-
-  - label: ":clipboard: guard content-policy"
-    key: guard-content-policy
-    command: .buildkite/scripts/guard-content-policy.sh
     agents:
       queue: fpc-isolated-secrets
     timeout_in_minutes: 10
