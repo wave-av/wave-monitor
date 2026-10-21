@@ -1,0 +1,14 @@
+rig/run.sh
+  h_af5ac1a9798224 51
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.23",
+  "base_commit_sha": "9060153244674b1ff256d7bd711766f9dc8480bc",
+  "prompts": {},
+  "humans": {
+    "h_af5ac1a9798224": {
+      "author": "Jake Fineman <jakefineman@gmail.com>"
+    }
+  }
+}
