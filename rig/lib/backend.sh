@@ -98,7 +98,9 @@ rig_pick_backend() {
 rig_run_local() {
   local co="$1" rel="$2" out="$3" envfile="$4" nodepv="$5" shimlog="$6" cap="$7"
   local -a evars
-  mapfile -t evars < "$envfile"
+  # Portable env load: mapfile needs bash 4+, macOS ships 3.2. The `|| [ -n ... ]` keeps a
+  # final line without trailing newline, which a bare `while read` would drop (mapfile keeps it).
+  while IFS= read -r line || [ -n "$line" ]; do evars+=("$line"); done < "$envfile"
   : > "$shimlog"; mkdir -p "$cap"
   ( cd "$co" && env -i \
       "PATH=$RIG_SHIMS:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin" \
