@@ -200,6 +200,11 @@ def schedule(parsed, failed_keys, env_kind="pr"):
     by_key = {s["key"]: s for s in parsed["steps"]}
     seen_failure = False
     seen_failed = set()
+    # Steps that never passed (failed OR blocked): a depends_on target in
+    # this set blocks its dependents transitively, matching Buildkite
+    # (a step whose dep never runs never runs). if-excluded steps stay OUT:
+    # BK treats skipped deps as satisfied, not blocking.
+    unpassed = set(failed_keys)
     for typ, ref in parsed["order"]:
         if typ == "wait":
             # A wait blocks downstream only when a step BEFORE it failed —
@@ -218,13 +223,15 @@ def schedule(parsed, failed_keys, env_kind="pr"):
             continue
         if ref in failed_keys:
             seen_failed.add(ref)
-        dep_failed = [d for d in st["depends_on"] if d in failed_keys]
+        dep_failed = [d for d in st["depends_on"] if d in unpassed]
         if dep_failed:
             blocked.append(ref)
             edges.append((ref, f"depends_on-failed:{','.join(dep_failed)}"))
+            unpassed.add(ref)
         elif seen_failure:
             blocked.append(ref)
             edges.append((ref, "wait-after-failure"))
+            unpassed.add(ref)
         else:
             started.append(ref)
     return started, blocked, edges

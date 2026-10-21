@@ -178,8 +178,7 @@ fix_c() {
   echo "--- pipeline diff base->uploaded ---" >> "$out"; echo "$diff" >> "$out"
   if cmp -s "$cap" "$src/.buildkite/pipeline.yml"; then
     emit c "$cfg" DENY DENY "$be" "$out" "host pinned pipeline to base revision"
-  elif echo "$diff" | grep -q "guard-content-policy" \
-    && echo "$diff" | grep -q "test-log-upload"; then
+  elif python3 -c "import json,sys; d=json.load(sys.stdin); sys.exit(0 if ('guard-content-policy' in d.get('removed',[]) and 'test-log-upload' in d.get('added',[])) else 1)" <<<"$diff"; then
     emit c "$cfg" DENY EXECUTED "$be" "$out" \
       "PR-checkout pipeline uploaded unvalidated (pinning=$pinned, rc=$rc): guards removed, secrets-queue step added"
   else
