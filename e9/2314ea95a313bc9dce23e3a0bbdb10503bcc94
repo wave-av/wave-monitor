@@ -1,0 +1,16 @@
+rig/run.sh
+  h_af5ac1a9798224 181
+rig/tools/analysis/pipeline.py
+  h_af5ac1a9798224 203-207,226,230,234
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.23",
+  "base_commit_sha": "e92314ea95a313bc9dce23e3a0bbdb10503bcc94",
+  "prompts": {},
+  "humans": {
+    "h_af5ac1a9798224": {
+      "author": "Jake Fineman <jakefineman@gmail.com>"
+    }
+  }
+}
