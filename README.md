@@ -97,7 +97,11 @@ pointer target):
     private repo/product names for the private-repo rule. The wrapper fails
     closed when it is unset/empty; local callers should run
     `scripts/public-repo-guard/content-policy.sh` directly (rule stays
-    optional there).
+    optional there). Durable host path (T1/WAVE-27030): the 512B-per-value
+    secrets channel carries the list as `GUARD_PRIVATE_REPOS_01.._06`
+    (Doppler `wave`/`bkjobs`, granted by step key in the host
+    `secrets-allowlist.tsv`); the wrapper assembles them when the full var
+    is unset and fails closed unless all six are present.
 - **Fork trust.** The secrets-queue steps consume host credentials, so the
   host must (a) check out the **trusted base revision** (not the PR head) for
   `governance-enforce` / `guard-content-policy`, (b) **withhold injection**

@@ -11,6 +11,13 @@
 # scripts/public-repo-guard/content-policy.sh directly, where the rule stays
 # optional — see README.md.)
 #
+# Chunking (T1/WAVE-27030): the host secrets channel caps each value at 512B
+# (golden image MAX_SECRET), so Doppler wave/bkjobs carries the list as
+# GUARD_PRIVATE_REPOS_01.._06 and the allowlist grants all six to this step
+# key. A full GUARD_PRIVATE_REPOS (GHA org var, per-build proof injection)
+# takes precedence when set; otherwise all six chunks must be present — a
+# missing chunk fails closed, never silently narrows the rule.
+#
 # GHA apt-installs ripgrep when missing; FPC guests must not assume sudo/apt,
 # so a missing rg fails closed with a clear message instead.
 set -euo pipefail
@@ -27,5 +34,15 @@ command -v rg >/dev/null 2>&1 || {
   echo "ripgrep (rg) is required but not installed in the agent image — failing closed."
   exit 2
 }
-: "${GUARD_PRIVATE_REPOS:?host must inject GUARD_PRIVATE_REPOS for step key guard-content-policy}"
+if [ -z "${GUARD_PRIVATE_REPOS:-}" ]; then
+  for _i in 01 02 03 04 05 06; do
+    _v="GUARD_PRIVATE_REPOS_$_i"
+    if [ -z "${!_v:-}" ]; then
+      echo "host must inject GUARD_PRIVATE_REPOS (full) or all of GUARD_PRIVATE_REPOS_01.._06 for step key guard-content-policy (missing $_v) — failing closed."
+      exit 2
+    fi
+  done
+  GUARD_PRIVATE_REPOS="$GUARD_PRIVATE_REPOS_01,$GUARD_PRIVATE_REPOS_02,$GUARD_PRIVATE_REPOS_03,$GUARD_PRIVATE_REPOS_04,$GUARD_PRIVATE_REPOS_05,$GUARD_PRIVATE_REPOS_06"
+  export GUARD_PRIVATE_REPOS
+fi
 bash scripts/public-repo-guard/content-policy.sh .
