@@ -1,0 +1,14 @@
+.buildkite/tests/pipeline-gating.py
+  h_af5ac1a9798224 10-11,194-201,416-417
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.23",
+  "base_commit_sha": "f2cde823e23f4a4eeb6fa1eac393998b147550a7",
+  "prompts": {},
+  "humans": {
+    "h_af5ac1a9798224": {
+      "author": "Jake Fineman <jakefineman@gmail.com>"
+    }
+  }
+}
