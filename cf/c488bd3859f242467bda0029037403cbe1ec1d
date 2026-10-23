@@ -1,0 +1,16 @@
+.buildkite/scripts/probe-absence-fs.mjs
+  h_af5ac1a9798224 4-7,74-76
+.buildkite/scripts/probe-absence-log.mjs
+  h_af5ac1a9798224 51-53
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.23",
+  "base_commit_sha": "cfc488bd3859f242467bda0029037403cbe1ec1d",
+  "prompts": {},
+  "humans": {
+    "h_af5ac1a9798224": {
+      "author": "Jake Fineman <jakefineman@gmail.com>"
+    }
+  }
+}
