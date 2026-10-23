@@ -1,0 +1,28 @@
+.buildkite/absence-probes-PROMOTION.md
+  h_af5ac1a9798224 4-6,57
+.buildkite/pipeline.yml
+  h_af5ac1a9798224 28-32,53-54,71-72,81-82
+.buildkite/scripts/absence-scanner.mjs
+  h_af5ac1a9798224 32,107,182-190,210-214,225-227,321-335
+.buildkite/scripts/probe-absence-env.mjs
+  h_af5ac1a9798224 42-51,82-91
+.buildkite/scripts/probe-absence-fs.mjs
+  h_af5ac1a9798224 35,70
+.buildkite/scripts/probe-absence-log.mjs
+  h_af5ac1a9798224 29,36-41,44,63,66-67,72-73
+.buildkite/tests/pipeline-gating.py
+  h_af5ac1a9798224 29-33,110-111,113-115
+README.md
+  h_af5ac1a9798224 88-91,118-122,144-147,150-151
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.23",
+  "base_commit_sha": "963d3776483be1118ab9b1e0cfd0004edd8ce790",
+  "prompts": {},
+  "humans": {
+    "h_af5ac1a9798224": {
+      "author": "Jake Fineman <jakefineman@gmail.com>"
+    }
+  }
+}
