@@ -1,0 +1,16 @@
+.buildkite/scripts/guard-gitleaks.sh
+  h_af5ac1a9798224 9-16,22-73
+.buildkite/tests/guard-gitleaks-base-config.bats
+  h_af5ac1a9798224 1-105
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.23",
+  "base_commit_sha": "89ec4e481f9fe6484c8c1a96077384680b3a1d69",
+  "prompts": {},
+  "humans": {
+    "h_af5ac1a9798224": {
+      "author": "Jake Fineman <jakefineman@gmail.com>"
+    }
+  }
+}
