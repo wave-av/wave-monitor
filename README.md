@@ -104,12 +104,15 @@ pointer target):
     `secrets-allowlist.tsv`); the wrapper assembles them when the full var
     is unset and fails closed unless all six are present.
 - **Fork trust.** The secrets-queue steps consume host credentials, so the
-  host must (a) check out the **trusted base revision** (not the PR head) for
-  `governance-enforce` / `guard-content-policy`, (b) **withhold injection**
-  for fork builds, and (c) require a manual **approval gate** before any
-  trusted re-run of a fork PR. Both `governance-enforce.sh` and
-  `guard-content-policy.sh` additionally refuse
-  when `BUILDKITE_PULL_REQUEST_REPO != BUILDKITE_REPO`.
+  host must (a) run them from the **trusted base ref** as a base-branch build
+  — re-running the fork build itself keeps fork metadata
+  (`BUILDKITE_PULL_REQUEST_REPO` still points at the fork) so the guards
+  still refuse it, (b) **withhold injection** for fork builds, and (c) require
+  a manual **approval gate** before any trusted re-run of a fork PR. Both
+  `governance-enforce.sh` and `guard-content-policy.sh` refuse when the
+  normalized head/pipeline identities differ (host/owner/name comparison —
+  SSH-vs-HTTPS or case variants of the same repository proceed; malformed
+  or empty identities refuse).
   `guard-gitleaks.sh` likewise never trusts PR-head rules: PR builds scan
   the checkout with the canonical `.gitleaks.toml` from the merge-base
   with the base branch (WAVE-27332).
