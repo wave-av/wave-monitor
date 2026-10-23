@@ -1,0 +1,18 @@
+.buildkite/scripts/probe-absence-fs.mjs
+  h_af5ac1a9798224 92-94
+.buildkite/scripts/probe-absence-log.mjs
+  h_af5ac1a9798224 71-73,76-77,110-112
+.buildkite/tests/pipeline-gating.py
+  h_af5ac1a9798224 95-99,107-109
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.23",
+  "base_commit_sha": "363e9e401d425c8ff6170a2b2ae026f456424f0d",
+  "prompts": {},
+  "humans": {
+    "h_af5ac1a9798224": {
+      "author": "Jake Fineman <jakefineman@gmail.com>"
+    }
+  }
+}
