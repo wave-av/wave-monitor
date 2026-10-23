@@ -1,0 +1,48 @@
+.buildkite/pipeline.yml
+  h_af5ac1a9798224 3-25,53,57-61,70,79-161
+.buildkite/provenance/VERSION
+  h_af5ac1a9798224 1-12
+.buildkite/provenance/bin/emit-provenance.mjs
+  h_af5ac1a9798224 1-196
+.buildkite/provenance/lib/provenance.mjs
+  h_af5ac1a9798224 1-65
+.buildkite/provenance/schema/provenance.schema.json
+  h_af5ac1a9798224 1-134
+.buildkite/scripts/foundation-file-size.sh
+  h_af5ac1a9798224 1-16
+.buildkite/scripts/foundation-secret-scan.sh
+  h_af5ac1a9798224 1-35
+.buildkite/scripts/foundation-skill-validate.sh
+  h_af5ac1a9798224 1-70
+.buildkite/scripts/foundation-verify-routes.sh
+  h_af5ac1a9798224 1-49
+.buildkite/scripts/governance-enforce.sh
+  h_af5ac1a9798224 1-73
+.buildkite/scripts/guard-content-policy.sh
+  h_af5ac1a9798224 1-48
+.buildkite/scripts/guard-gitleaks.sh
+  h_af5ac1a9798224 1-24
+.buildkite/scripts/provenance-emit.sh
+  h_af5ac1a9798224 1-114
+.buildkite/tests/README.md
+  h_af5ac1a9798224 1-14
+.buildkite/tests/guard-content-policy-fork.bats
+  h_af5ac1a9798224 1-109
+.buildkite/tests/pipeline-gating.py
+  h_af5ac1a9798224 1-208
+README.md
+  h_af5ac1a9798224 78-114
+eslint.config.js
+  h_af5ac1a9798224 10
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.23",
+  "base_commit_sha": "0fb339d2871bba60f8343ef4cc54bddd795c2f93",
+  "prompts": {},
+  "humans": {
+    "h_af5ac1a9798224": {
+      "author": "Jake Fineman <jakefineman@gmail.com>"
+    }
+  }
+}
