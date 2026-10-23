@@ -1,0 +1,16 @@
+.buildkite/provenance/lib/provenance.mjs
+  h_af5ac1a9798224 33-34
+eslint.config.js
+  h_af5ac1a9798224 10
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.23",
+  "base_commit_sha": "0471a06d3de8f82bc4fc445712003c277c2cfdcf",
+  "prompts": {},
+  "humans": {
+    "h_af5ac1a9798224": {
+      "author": "Jake Fineman <jakefineman@gmail.com>"
+    }
+  }
+}
