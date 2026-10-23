@@ -1,0 +1,88 @@
+src/shared/ipc.ts
+  h_af5ac1a9798224 37
+rig/selftest.sh
+  h_af5ac1a9798224 77,82,90,96,151,157,162,171,176,178-180,187,199,210,215,229,234
+.buildkite/upload.sh
+  h_af5ac1a9798224 2
+rig/config-current/.buildkite/upload.sh
+  h_af5ac1a9798224 2
+rig/config-patched/.buildkite/upload.sh
+  h_af5ac1a9798224 2
+rig/config-current/.buildkite/scripts/foundation-secret-scan.sh
+  h_af5ac1a9798224 4
+src/main/updater/updater.ts
+  h_af5ac1a9798224 4
+.github/workflows/issue-ops-triage.yml
+  h_af5ac1a9798224 14,19
+rig/config-patched/.buildkite/scripts/foundation-skill-validate.sh
+  h_af5ac1a9798224 4
+AGENTS.md
+  h_af5ac1a9798224 25
+rig/config-patched/.buildkite/scripts/foundation-secret-scan.sh
+  h_af5ac1a9798224 4
+CHANGELOG.md
+  h_af5ac1a9798224 42
+rig/config-current/.buildkite/pipeline.yml
+  h_af5ac1a9798224 1,3,25,43,53,61,69,77,85,94
+src/main/updater/rollout-guard.ts
+  h_af5ac1a9798224 4
+rig/config-current/.buildkite/scripts/ci.sh
+  h_af5ac1a9798224 3
+rig/lib/backend.sh
+  h_af5ac1a9798224 6
+.buildkite/scripts/foundation-skill-validate.sh
+  h_af5ac1a9798224 4
+TESTING.md
+  h_af5ac1a9798224 3
+CONTRIBUTING.md
+  h_af5ac1a9798224 67
+rig/config-patched/.buildkite/pipeline.yml
+  h_af5ac1a9798224 1,3,25,43,53,61,69,77,85,94
+.buildkite/scripts/ci.sh
+  h_af5ac1a9798224 3
+.buildkite/scripts/foundation-secret-scan.sh
+  h_af5ac1a9798224 4
+.github/workflows/foundation-gate.yml
+  h_af5ac1a9798224 1,3,5
+rig/config-current/.buildkite/tests/pipeline-gating.py
+  h_af5ac1a9798224 9,93-94,129,172
+.buildkite/pipeline.yml
+  h_af5ac1a9798224 1,3,50,98,108,116,124,132,140,149,162
+  h_af5ac1a9798224 68,78,88
+rig/config-patched/.buildkite/scripts/ci.sh
+  h_af5ac1a9798224 3
+rig/config-current/.buildkite/scripts/foundation-skill-validate.sh
+  h_af5ac1a9798224 4
+rig/tools/analysis/pipeline.py
+  h_af5ac1a9798224 5,110,112,142,147
+rig/fixtures/fork-pipeline.yml
+  h_af5ac1a9798224 8,16,23
+RELEASE-CHECKLIST.md
+  h_af5ac1a9798224 31
+README.md
+  h_af5ac1a9798224 44,83,164
+.buildkite/tests/pipeline-gating.py
+  h_af5ac1a9798224 9,129-130
+  h_af5ac1a9798224 117,165,208
+.github/workflows/_checks.yml
+  h_af5ac1a9798224 3,5,50
+.github/workflows/pr-agent.yml
+  h_af5ac1a9798224 1-2,6-7,12,31,35,48,53,71,98,146,149,177,186,199,249,269,288,302,319
+.buildkite/provenance/VERSION
+  h_af5ac1a9798224 2,10,12
+.buildkite/provenance/schema/provenance.schema.json
+  h_af5ac1a9798224 3
+.buildkite/scripts/absence-scanner.mjs
+  h_af5ac1a9798224 5
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.23",
+  "base_commit_sha": "8e85ccb37bc8cb92eda2bf5c99e7d0b3c7b978a2",
+  "prompts": {},
+  "humans": {
+    "h_af5ac1a9798224": {
+      "author": "Jake Fineman <jakefineman@gmail.com>"
+    }
+  }
+}
