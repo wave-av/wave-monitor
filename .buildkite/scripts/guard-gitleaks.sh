@@ -38,6 +38,9 @@ base_ref() {
 
 # trust_self: replace this PR-controlled script with the base-tip copy and
 # re-exec it. Caller must already be cd'd into the git repo. Never returns.
+# The trusted handoff travels on ARGV (--trusted-work), never the
+# environment: pipeline env is PR-influenced, so a GUARD_TRUSTED/GUARD_WORK
+# pair from env would let a caller skip trust AND steer the rm -rf trap.
 trust_self() {
   local base
   base="$(base_ref)" || exit 2
@@ -48,7 +51,7 @@ trust_self() {
   git show "${base}:${SCRIPT_REL_PATH}" > "$WORK/trusted-guard-gitleaks.sh" \
     || { echo "guard-gitleaks: cannot extract trusted guard script — failing closed" >&2; exit 2; }
   # ${1+"$@"}: "$@" under set -u on old bash (macOS 3.2) errors with no args.
-  exec env GUARD_TRUSTED=1 GUARD_WORK="$WORK" bash "$WORK/trusted-guard-gitleaks.sh" ${1+"$@"}
+  exec bash "$WORK/trusted-guard-gitleaks.sh" --trusted-work "$WORK" ${1+"$@"}
 }
 
 # resolve_config: print the config path, or DEFAULTS for built-in rules.
@@ -72,20 +75,30 @@ resolve_config() {
 }
 
 main() {
-  if [[ "${GUARD_TRUSTED:-}" == "1" ]]; then
-    # Re-exec'd from trust_self: cwd is already the repo root (preserved
-    # across exec); BASH_SOURCE now points into $WORK so it must NOT re-cd.
-    WORK="${GUARD_WORK:-}"
-    if [[ -z "$WORK" ]]; then
-      echo "guard-gitleaks: trusted re-exec without GUARD_WORK — failing closed" >&2
+  # Trusted re-exec arrives as `--trusted-work DIR` on argv (see trust_self).
+  # Anything else-shaped (including GUARD_* impostors in env, which are
+  # ignored entirely) takes the normal path below.
+  local trusted=0
+  if [[ "${1:-}" == "--trusted-work" && -n "${2:-}" ]]; then
+    # Re-exec'd: cwd is already the repo root (preserved across exec);
+    # BASH_SOURCE now points into $WORK so it must NOT re-cd.
+    WORK="$2"
+    if [[ ! -d "$WORK" || ! -f "$WORK/trusted-guard-gitleaks.sh" ]]; then
+      echo "guard-gitleaks: bad --trusted-work dir — failing closed" >&2
       exit 2
     fi
+    trusted=1
+    shift 2
   else
+    if [[ "${1:-}" == "--trusted-work" ]]; then
+      echo "guard-gitleaks: --trusted-work needs a directory — failing closed" >&2
+      exit 2
+    fi
     cd "$(dirname "${BASH_SOURCE[0]}")/../.." || exit 2
     WORK="$(mktemp -d)"
   fi
   trap 'rm -rf "$WORK"' EXIT
-  if [[ "${GUARD_TRUSTED:-}" != "1" ]] && is_pr_build; then
+  if [[ "$trusted" != "1" ]] && is_pr_build; then
     trust_self ${1+"$@"}
   fi
   local bin

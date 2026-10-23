@@ -24,7 +24,14 @@ setup() {
 
 teardown() {
   cd /tmp || true
-  rm -rf "$FIX"
+  # Retry: git background maintenance can hold fixture files briefly on
+  # macOS (ENOTEMPTY); a fixed teardown must not fail the test.
+  local i
+  for i in 1 2 3 4 5; do
+    rm -rf "$FIX" 2>/dev/null && break
+    sleep 0.2
+  done
+  rm -rf "$FIX" 2>/dev/null || true
 }
 
 _ensure_gitleaks() {
@@ -154,9 +161,25 @@ _neuter_plant_poison() {
   [[ "$output" != *"PR-SCRIPT-RAN"* ]]
   # Control: the poison bypasses when re-exec is skipped, proving the
   # test is not vacuous.
-  run --separate-stderr env GUARD_TRUSTED=1 GUARD_WORK="$(mktemp -d)" \
+  TW="$(mktemp -d)"
+  touch "$TW/trusted-guard-gitleaks.sh"
+  run --separate-stderr env \
     BUILDKITE_PULL_REQUEST=123 BUILDKITE_PULL_REQUEST_BASE_BRANCH=main \
-    GITLEAKS_BIN="$BIN" bash .buildkite/scripts/guard-gitleaks.sh
+    GITLEAKS_BIN="$BIN" bash .buildkite/scripts/guard-gitleaks.sh --trusted-work "$TW"
   [ "$status" -eq 0 ]
   [[ "$output" == *"PR-SCRIPT-RAN"* ]]
+}
+
+@test "GUARD_* impostors in env are ignored (argv-only trust)" {
+  BIN="$(_ensure_gitleaks)"
+  [ -n "$BIN" ] && [ -x "$BIN" ]
+  _commit_main_strict
+  _neuter_plant_poison
+  # Attacker-set env must neither skip re-exec nor steer deletion: the
+  # poisoned script still gets replaced (no marker) and still flags.
+  run --separate-stderr env GUARD_TRUSTED=1 GUARD_WORK=/ \
+    BUILDKITE_PULL_REQUEST=123 BUILDKITE_PULL_REQUEST_BASE_BRANCH=main \
+    GITLEAKS_BIN="$BIN" bash .buildkite/scripts/guard-gitleaks.sh
+  [ "$status" -eq 1 ]
+  [[ "$output" != *"PR-SCRIPT-RAN"* ]]
 }
