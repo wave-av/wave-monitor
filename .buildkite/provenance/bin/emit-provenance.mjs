@@ -24,7 +24,7 @@
 import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { copyFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
-import { join, resolve } from 'node:path';
+import { join, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
   SECRET_NAME_RE,
@@ -116,7 +116,10 @@ function main() {
     if (!key || !queue || !command) fail(`steps[${i}] needs key, queue, command`);
     if (!Number.isInteger(exit)) fail(`steps[${i}] needs an integer exit status`);
     if (/\s/.test(command)) fail(`steps[${i}].command must be exactly one script path (no args), got: ${command}`);
-    const scriptPath = join(repoDir, command);
+    const scriptPath = resolve(repoDir, command);
+    if (scriptPath !== repoDir && !scriptPath.startsWith(repoDir + sep)) {
+      fail(`steps[${i}].command escapes the checkout (must stay under --repo-dir), got: ${command}`);
+    }
     if (!existsSync(scriptPath)) fail(`steps[${i}].command not found in checkout: ${command}`);
     return { index: i, key, queue, command, script_sha256: sha256File(scriptPath), exit };
   });
