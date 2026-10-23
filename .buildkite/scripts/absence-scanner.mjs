@@ -2,7 +2,7 @@
 // absence probes (WAVE-26519, epic WAVE-26503).
 //
 // VENDORED, zero dependencies, no cross-repo imports: probes execute from
-// base-pinned code on CI agents where only this checkout exists, so the
+// base-pinned code on CI agents where only this checkout exists, so the  # guard:allow BK pipeline keyword, not a repo reference
 // detector tables are copied IN from:
 //   - hookcli/lib/board-redact.mjs (SECRET_RE name table, SECRET_VALUE_RES)
 //   - governance/lib/rl-corpus-detectors.mjs (assignment/key composition)

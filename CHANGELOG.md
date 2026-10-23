@@ -39,7 +39,7 @@ All notable changes documented here.
 
   Contributors on forks are affected: a maintainer's `/review` on a fork PR is
   now declined with a warning rather than silently running.
-  (wave-av/wave-foundation-public#73)
+  (wave-av/wave-foundation-public#73) <!-- # guard:allow public wave-foundation-public repo; guard term matches at hyphen boundary -->
 
 ### Added
 

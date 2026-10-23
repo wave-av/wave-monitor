@@ -2,7 +2,7 @@
 """RIG analysis: minimal Buildkite pipeline.yml parser + scheduler simulator.
 
 Parses the subset this fleet uses (steps list with label/key/command/if/
-agents.queue/depends_on, `wait` steps, retry blocks skipped as opaque).
+agents.queue/depends_on, `wait` steps, retry blocks skipped as opaque).  # guard:allow BK pipeline schema attribute, not a repo reference
 Anything outside the subset -> PipelineError (fail closed: the rig reports
 ERROR, never a false DENY).
 """
@@ -107,9 +107,9 @@ def parse(pipeline_path):
             k, v = txt.split(":", 1)
             k, v = k.strip(), v.strip().strip("'\"")
             parent4 = k
-            if k == "agents":
+            if k == "agents":  # guard:allow BK pipeline keyword, not a repo reference
                 if v:
-                    raise PipelineError(f"{pipeline_path}:{ln}: inline agents "
+                    raise PipelineError(f"{pipeline_path}:{ln}: inline agents "  # guard:allow BK pipeline keyword, not a repo reference
                                         f"mapping outside subset: {v[:40]}")
                 continue
             if k in ("label", "key", "command"):
@@ -139,12 +139,12 @@ def parse(pipeline_path):
                 else:
                     cur["depends_on"] = []  # block list follows at indent 6
                 continue
-            if k in ("retry", "timeout_in_minutes", "agents"):
+            if k in ("retry", "timeout_in_minutes", "agents"):  # guard:allow BK pipeline keyword, not a repo reference
                 continue  # opaque to gating
             raise PipelineError(f"{pipeline_path}:{ln}: step key outside "
                                 f"subset: {k}")
         elif ind == 6:
-            if parent4 == "agents" and ":" in txt:
+            if parent4 == "agents" and ":" in txt:  # guard:allow BK pipeline keyword, not a repo reference
                 k = txt.split(":", 1)[0].strip()
                 if k == "queue":
                     cur["queue"] = txt.split(":", 1)[1].strip().strip("'\"")
