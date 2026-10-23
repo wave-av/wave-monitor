@@ -89,6 +89,9 @@ function main(argv, env) {
     verdict = 'SKIP';
     notes.push('zero files scanned — nothing was verified (explicit SKIP, not a silent pass)');
   }
+  if (excluded.length > 0) {
+    notes.push(`${excluded.length} path(s) excluded/unscanned (see excluded_sample) — coverage is partial, not silent`);
+  }
   const receipt = {
     probe: 'absence-fs',
     verdict,

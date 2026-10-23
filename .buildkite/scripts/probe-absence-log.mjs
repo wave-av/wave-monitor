@@ -68,10 +68,13 @@ function main(argv, env) {
 
   const { workspace, inputs } = defaultInputs(env);
   notes.push(`default input collection under workspace ${workspace}: ${inputs.length} log/artifact file(s)`);
+  // File population: value-shape families only (mirrors scanRoots — the NAME
+  // families read false here and are covered by probe-env instead). Claiming
+  // true would report scans that never ran (review finding, PR #124).
   const families = {
     'secret-value': true,
-    'secret-assignment': true,
-    'secret-name': true,
+    'secret-assignment': false,
+    'secret-name': false,
     'nda-term': terms.length > 0,
     'nda-pattern': true,
   };
@@ -103,6 +106,9 @@ function finish({ families, hits, excluded, scannedRoots, filesScanned, notes })
   if (filesScanned === 0 && hits.length === 0) {
     verdict = 'SKIP';
     notes.push('zero log/artifact files scanned — nothing was verified (explicit SKIP, not a silent pass)');
+  }
+  if (excluded.length > 0) {
+    notes.push(`${excluded.length} path(s) excluded/unscanned (see excluded_sample) — coverage is partial, not silent`);
   }
   const receipt = {
     probe: 'absence-log',

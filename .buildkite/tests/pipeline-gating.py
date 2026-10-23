@@ -92,6 +92,11 @@ def main():
     # gated (non-probe) steps; probes are asserted separately.
     probes = [c for c in commands if (c.get("key") or "").startswith("probe-")]
     gated = [c for c in commands if not (c.get("key") or "").startswith("probe-")]
+    check("2p exactly three absence probes present", len(probes) == 3,
+          f"got {[c.get('key') for c in probes]}")
+    check("2p probe keys pinned (no probe-evil smuggling)",
+          sorted(c.get("key") for c in probes) == ["probe-absence-env", "probe-absence-fs", "probe-absence-log"],
+          f"got {sorted(c.get('key') for c in probes)}")
     if probes:
         check("2p probes precede all gated steps",
               all(commands.index(p) < commands.index(g) for p in probes for g in gated),
@@ -99,6 +104,9 @@ def main():
         for p in probes:
             check(f"2p {p.get('key')} report-mode soft_fail", p.get("soft_fail") is True,
                   f"got {p.get('soft_fail')!r}")
+            check(f"2p {p.get('key')} never on secrets queue",
+                  p.get("key") == "probe-absence-env" or (p.get("agents") or {}).get("queue") != SECRETS_QUEUE,
+                  "only probe-absence-env may ride the secrets queue (it asserts absence there); any other probe-* key would bypass gating")
             check(f"2p {p.get('key')} carries no depends_on", "depends_on" not in p,
                   "probe must run ungated")
 
