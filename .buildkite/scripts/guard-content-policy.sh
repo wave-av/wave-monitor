@@ -23,11 +23,21 @@
 set -euo pipefail
 cd "$(dirname "$0")/../.."
 
-if [ -n "${BUILDKITE_PULL_REQUEST_REPO:-}" ] && [ -n "${BUILDKITE_REPO:-}" ] \
-   && [ "$BUILDKITE_PULL_REQUEST_REPO" != "$BUILDKITE_REPO" ]; then
-  echo "fork PR detected (head $BUILDKITE_PULL_REQUEST_REPO != pipeline $BUILDKITE_REPO) — refusing to run with host-injected credentials."
-  echo "Host must run the trusted base-revision script or approve a trusted run; see README.md (Buildkite runbook)."
-  exit 2
+_norm_repo() {
+  # host/owner/name lowercase, no scheme/user/suffix (review findings: a raw
+  # comparison false-refuses SSH-style pipeline URLs, but dropping the host
+  # would collapse distinct SCM hosts into one identity).
+  printf '%s' "$1" | tr '[:upper:]' '[:lower:]' | sed -E -e 's#^(https?|ssh)://([^/@]+@)?([^/]+)/#\3/#' -e 's#^git@([^:]+):#\1/#' -e 's#/$##' -e 's#\.git$##'
+}
+
+if [ -n "${BUILDKITE_PULL_REQUEST_REPO:-}" ]; then
+  _head="$(_norm_repo "$BUILDKITE_PULL_REQUEST_REPO")"
+  _pipe="$(_norm_repo "${BUILDKITE_REPO:-}")"
+  if [ -z "$_head" ] || [ -z "$_pipe" ] || [ "$_head" != "$_pipe" ]; then
+    echo "fork PR detected (head $BUILDKITE_PULL_REQUEST_REPO != pipeline ${BUILDKITE_REPO:-}) — refusing to run with host-injected credentials."
+    echo "Host must run the trusted base-revision script or approve a trusted run; see README.md (Buildkite runbook)."
+    exit 2
+  fi
 fi
 
 command -v rg >/dev/null 2>&1 || {
