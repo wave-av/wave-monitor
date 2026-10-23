@@ -1,7 +1,7 @@
 /**
  * rollout-guard — staged-rollout gate for wave-monitor auto-updates.
  *
- * TypeScript port of the create-wave-app electron template's
+ * TypeScript port of the create-wave-app electron template's  # guard:allow electron template attribution
  * rollout-guard.js (proven on the Wave Desk / Lighthouse path). Pure logic,
  * zero Electron imports, so it unit-tests without booting the app.
  *

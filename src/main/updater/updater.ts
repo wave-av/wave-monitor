@@ -1,7 +1,7 @@
 /**
  * updater — auto-update wiring for wave-monitor.
  *
- * TypeScript port of the create-wave-app electron template's updater.js.
+ * TypeScript port of the create-wave-app electron template's updater.js.  # guard:allow electron template attribution
  *
  * Feed: generic provider at FEED_URL (package.json `publish` config is
  * baked into app-update.yml at dist time). electron-updater checks; nothing

@@ -28,7 +28,7 @@ until the `updates.wave.online/wave-monitor` feed is live.
   OS safeStorage. Ported from wave-desktop's control plane; routes here are
   `GET /v1/status`, `GET /v1/version`, `POST /v1/monitor/start|stop`.
 - `src/main/updater/` — `electron-updater` + staged-rollout gate
-  (`rollout-guard.ts`, ported from the create-wave-app electron template).
+  (`rollout-guard.ts`, ported from the create-wave-app electron template). <!-- # guard:allow electron template attribution -->
   Checks download nothing until the feed's `rollout.json` admits this
   machine; downloads never auto-install (`ready` → user restarts).
 - Frameless shell: `frame: false` + `.wave-drag` header + app/edit/window

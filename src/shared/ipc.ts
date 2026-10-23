@@ -34,7 +34,7 @@ export type IpcChannel = (typeof IPC)[keyof typeof IPC];
 /**
  * Auto-update snapshot served over IPC.updateStatus. States: idle,
  * checking, up-to-date, available, deferred (rollout gate), ready, error.
- * Shape mirrors the create-wave-app electron template's updater.js.
+ * Shape mirrors the create-wave-app electron template's updater.js.  # guard:allow electron template attribution
  */
 export type UpdateState =
   | 'idle'

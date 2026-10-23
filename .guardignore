@@ -1,0 +1,6 @@
+# AGENTS.md — the yaml machine-surface fence (line 25) trips the private-repo
+# rule on a hyphen-boundary false positive, and the fence info line must stay
+# byte-exact for external machine readers, so no inline `# guard:allow` marker
+# can go on it. Single-file carve-out; re-check if the guard term is ever
+# scoped (WAVE-27328).
+AGENTS.md

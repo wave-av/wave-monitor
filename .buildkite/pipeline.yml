@@ -1,6 +1,6 @@
-# ci-smoke convention, kept: fpc-isolated agents run with no-command-eval, so
+# ci-smoke convention, kept: fpc-isolated agents run with no-command-eval, so  # guard:allow BK pipeline keyword, not a repo reference
 # every step's command is exactly one checked-in script path, no arguments.
-# Retry follows the wave-ci invariant (templates/_lib/step.mjs): automatic
+# Retry follows the wave-ci invariant (templates/_lib/step.mjs): automatic  # guard:allow test invariant and image name
 # retry on agent loss only, explicit manual block. Pipeline-level timeouts are
 # dropped by Buildkite, so each step carries its own.
 #
@@ -47,7 +47,7 @@ steps:
   - label: ":lock: probe absence-env (report mode)"
     key: probe-absence-env
     command: .buildkite/scripts/probe-absence-env.mjs
-    agents:
+    agents:  # guard:allow BK pipeline keyword, not a repo reference
       queue: fpc-isolated-secrets
     timeout_in_minutes: 5
     soft_fail:
@@ -65,7 +65,7 @@ steps:
   - label: ":mag: probe absence-fs (report mode)"
     key: probe-absence-fs
     command: .buildkite/scripts/probe-absence-fs.mjs
-    agents:
+    agents:  # guard:allow BK pipeline keyword, not a repo reference
       queue: fpc-isolated
     timeout_in_minutes: 10
     soft_fail:
@@ -75,7 +75,7 @@ steps:
   - label: ":scroll: probe absence-log (report mode)"
     key: probe-absence-log
     command: .buildkite/scripts/probe-absence-log.mjs
-    agents:
+    agents:  # guard:allow BK pipeline keyword, not a repo reference
       queue: fpc-isolated
     timeout_in_minutes: 10
     soft_fail:
@@ -85,7 +85,7 @@ steps:
   - label: ":key: guard gitleaks"
     key: guard-gitleaks
     command: .buildkite/scripts/guard-gitleaks.sh
-    agents:
+    agents:  # guard:allow BK pipeline keyword, not a repo reference
       queue: fpc-isolated
     timeout_in_minutes: 10
     retry: *retry-agent-loss
@@ -95,7 +95,7 @@ steps:
   - label: ":clipboard: guard content-policy"
     key: guard-content-policy
     command: .buildkite/scripts/guard-content-policy.sh
-    agents:
+    agents:  # guard:allow BK pipeline keyword, not a repo reference
       queue: fpc-isolated-secrets
     timeout_in_minutes: 10
     retry: *retry-agent-loss
@@ -105,7 +105,7 @@ steps:
   - label: ":test_tube: typecheck + lint + unit tests"
     key: node-gates
     command: .buildkite/scripts/ci.sh
-    agents:
+    agents:  # guard:allow BK pipeline keyword, not a repo reference
       queue: fpc-isolated
     timeout_in_minutes: 15
     retry: *retry-agent-loss
@@ -113,7 +113,7 @@ steps:
   - label: ":mag: foundation secret-scan"
     key: foundation-secret-scan
     command: .buildkite/scripts/foundation-secret-scan.sh
-    agents:
+    agents:  # guard:allow BK pipeline keyword, not a repo reference
       queue: fpc-isolated
     timeout_in_minutes: 10
     retry: *retry-agent-loss
@@ -121,7 +121,7 @@ steps:
   - label: ":straight_ruler: foundation file-size gate"
     key: foundation-file-size
     command: .buildkite/scripts/foundation-file-size.sh
-    agents:
+    agents:  # guard:allow BK pipeline keyword, not a repo reference
       queue: fpc-isolated
     timeout_in_minutes: 10
     retry: *retry-agent-loss
@@ -129,7 +129,7 @@ steps:
   - label: ":scroll: foundation skill-validate"
     key: foundation-skill-validate
     command: .buildkite/scripts/foundation-skill-validate.sh
-    agents:
+    agents:  # guard:allow BK pipeline keyword, not a repo reference
       queue: fpc-isolated
     timeout_in_minutes: 5
     retry: *retry-agent-loss
@@ -137,7 +137,7 @@ steps:
   - label: ":globe_with_meridians: foundation verify-routes"
     key: foundation-verify-routes
     command: .buildkite/scripts/foundation-verify-routes.sh
-    agents:
+    agents:  # guard:allow BK pipeline keyword, not a repo reference
       queue: fpc-isolated
     timeout_in_minutes: 5
     retry: *retry-agent-loss
@@ -146,7 +146,7 @@ steps:
     key: governance-enforce
     command: .buildkite/scripts/governance-enforce.sh
     if: build.pull_request.id != null
-    agents:
+    agents:  # guard:allow BK pipeline keyword, not a repo reference
       queue: fpc-isolated-secrets
     timeout_in_minutes: 10
     retry: *retry-agent-loss
@@ -159,7 +159,7 @@ steps:
   - label: ":scroll: provenance emit (O1)"
     key: provenance-emit
     command: .buildkite/scripts/provenance-emit.sh
-    agents:
+    agents:  # guard:allow BK pipeline keyword, not a repo reference
       queue: fpc-isolated
     timeout_in_minutes: 5
     retry: *retry-agent-loss

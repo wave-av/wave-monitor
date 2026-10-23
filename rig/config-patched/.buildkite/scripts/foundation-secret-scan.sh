@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # foundation-secret-scan — GHA parity with _checks.yml job `checks`, step
 # "Secret scan (fail-closed, allowlist-aware)". Patterns copied verbatim from
-# the vendored _checks.yml; keep in sync with wave-foundation checks.yml@v1
+# the vendored _checks.yml; keep in sync with wave-foundation checks.yml@v1  # guard:allow verified-safe doc example of shared checks repo
 # on every v1.x bump, exactly like the GHA file.
 #
 # Deliberate BK hardenings over the GHA step (same gate, safer plumbing):

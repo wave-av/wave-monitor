@@ -47,7 +47,7 @@ npm run dist:mac     # build a signed .dmg (needs CI secrets)
 4. **One responsibility per file.** Target 200–500 lines per file; split
    before 800.
 5. **Touch-first UI.** Minimum 44pt tap targets (`min-h-11` in Tailwind);
-   every interaction has a touch path. See [WAVE UI Touch-First Standard][wts].
+   every interaction has a touch path. (WAVE UI Touch-First Standard, internal.)
 
 ## PR shape
 
@@ -64,4 +64,3 @@ Open a private GitHub Security Advisory at
 <https://github.com/wave-av/wave-desktop/security/advisories/new>. Do NOT
 open a public issue.
 
-[wts]: https://github.com/wave-av/wave-foundation/blob/master/frameworks/copywriting/voice-and-tone.md

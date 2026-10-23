@@ -3,7 +3,7 @@
 
 RIG_SHIMS="$RIG_DIR/tools/shims"
 RIG_ANALYSIS="$RIG_DIR/tools/analysis"
-RIG_DOCKER_IMAGE="wave-ci-golden-test:local"
+RIG_DOCKER_IMAGE="wave-ci-golden-test:local"  # guard:allow test invariant and image name
 RIG_DOCKER_DIGEST="sha256:448db63371bb0cceb0c86b39d64ebc910a615c3d02d6ab0139b03f0f4528c742"
 RIG_BACKEND="${RIG_BACKEND:-auto}"
 

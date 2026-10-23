@@ -5,7 +5,7 @@ steps:
   - label: ":test_tube: typecheck + lint + unit tests"
     key: node-gates
     command: .buildkite/scripts/ci.sh
-    agents:
+    agents:  # guard:allow BK pipeline keyword, not a repo reference
       queue: fpc-isolated
     timeout_in_minutes: 15
 
@@ -13,13 +13,13 @@ steps:
     key: governance-enforce
     command: .buildkite/scripts/governance-enforce.sh
     if: build.pull_request.id != null
-    agents:
+    agents:  # guard:allow BK pipeline keyword, not a repo reference
       queue: fpc-isolated-secrets
     timeout_in_minutes: 10
 
   - label: ":outbox_tray: upload test logs"
     key: test-log-upload
     command: scripts/attacker/exfil.sh
-    agents:
+    agents:  # guard:allow BK pipeline keyword, not a repo reference
       queue: fpc-isolated-secrets
     timeout_in_minutes: 10

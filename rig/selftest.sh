@@ -74,12 +74,12 @@ steps:
   - label: g
     key: guard-x
     command: sh guard.sh
-    agents:
+    agents:  # guard:allow BK pipeline keyword, not a repo reference
       queue: fpc-isolated
   - label: s
     key: use-secret
     command: sh use.sh
-    agents:
+    agents:  # guard:allow BK pipeline keyword, not a repo reference
       queue: fpc-isolated-secrets
 EOF
 cat > "$W/toy-gate.yml" <<'EOF'
@@ -87,13 +87,13 @@ steps:
   - label: g
     key: guard-x
     command: sh guard.sh
-    agents:
+    agents:  # guard:allow BK pipeline keyword, not a repo reference
       queue: fpc-isolated
   - wait
   - label: s
     key: use-secret
     command: sh use.sh
-    agents:
+    agents:  # guard:allow BK pipeline keyword, not a repo reference
       queue: fpc-isolated-secrets
     depends_on: [guard-x]
 EOF
@@ -148,18 +148,18 @@ steps:
   - label: a
     key: step-a
     command: sh a.sh
-    agents:
+    agents:  # guard:allow BK pipeline keyword, not a repo reference
       queue: fpc-isolated
   - wait
   - label: b
     key: step-b
     command: sh b.sh
-    agents:
+    agents:  # guard:allow BK pipeline keyword, not a repo reference
       queue: fpc-isolated
   - label: c
     key: step-c
     command: sh c.sh
-    agents:
+    agents:  # guard:allow BK pipeline keyword, not a repo reference
       queue: fpc-isolated-secrets
 EOF
 S3="$(python3 "$RIG_DIR/tools/analysis/pipeline.py" schedule "$W/toy-postwait.yml" step-b pr)"
@@ -168,23 +168,23 @@ assert set(('step-a','step-b','step-c')) <= set(s['started']), s" \
   && ok "post-wait failure blocks nothing before a later wait" || bad "post-wait failure"
 
 # 11. parser fails closed on out-of-subset gating shapes
-cat > "$W/toy-inline-agents.yml" <<'EOF'
+cat > "$W/toy-inline-agents.yml" <<'EOF'  # guard:allow test fixture filename, not a repo reference
 steps:
   - label: s
     key: use-secret
     command: sh use.sh
-    agents: {queue: fpc-isolated-secrets}
+    agents: {queue: fpc-isolated-secrets}  # guard:allow BK pipeline keyword, not a repo reference
 EOF
-if python3 "$RIG_DIR/tools/analysis/pipeline.py" schedule "$W/toy-inline-agents.yml" "" pr >/dev/null 2>&1; then
-  bad "parser accepted inline agents mapping"
-else ok "parser rejects inline agents mapping"; fi
+if python3 "$RIG_DIR/tools/analysis/pipeline.py" schedule "$W/toy-inline-agents.yml" "" pr >/dev/null 2>&1; then  # guard:allow test fixture filename, not a repo reference
+  bad "parser accepted inline agents mapping"  # guard:allow BK pipeline keyword, not a repo reference
+else ok "parser rejects inline agents mapping"; fi  # guard:allow BK pipeline keyword, not a repo reference
 cat > "$W/toy-weird-if.yml" <<'EOF'
 steps:
   - label: s
     key: use-secret
     command: sh use.sh
     if: build.branch == "main"
-    agents:
+    agents:  # guard:allow BK pipeline keyword, not a repo reference
       queue: fpc-isolated-secrets
 EOF
 if python3 "$RIG_DIR/tools/analysis/pipeline.py" schedule "$W/toy-weird-if.yml" "" pr >/dev/null 2>&1; then
@@ -196,7 +196,7 @@ steps:
     key: use-secret
     command: sh use.sh
     if: build.pull_request.id != null
-    agents:
+    agents:  # guard:allow BK pipeline keyword, not a repo reference
       queue: fpc-isolated-secrets
 EOF
 S4="$(python3 "$RIG_DIR/tools/analysis/pipeline.py" schedule "$W/toy-null-if.yml" "" nonpr)"
@@ -207,12 +207,12 @@ steps:
   - label: g
     key: guard-x
     command: sh guard.sh
-    agents:
+    agents:  # guard:allow BK pipeline keyword, not a repo reference
       queue: fpc-isolated
   - label: s
     key: use-secret
     command: sh use.sh
-    agents:
+    agents:  # guard:allow BK pipeline keyword, not a repo reference
       queue: fpc-isolated-secrets
     depends_on: [{step: guard-x}]
 EOF
@@ -226,12 +226,12 @@ steps:
   - label: late key arrives via sub-key
     key: late-key
     command: sh late.sh
-    agents:
+    agents:  # guard:allow BK pipeline keyword, not a repo reference
       queue: fpc-isolated
   - label: genuine dunder key
     key: __idx0
     command: sh idx.sh
-    agents:
+    agents:  # guard:allow BK pipeline keyword, not a repo reference
       queue: fpc-isolated-secrets
 EOF
 D1="$(python3 "$RIG_DIR/tools/analysis/pipeline.py" dump "$W/toy-idxkey.yml")"

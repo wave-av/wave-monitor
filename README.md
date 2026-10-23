@@ -41,7 +41,7 @@ for the nine release gates (`npm run release-check` runs 1–5).
 - `src/main/updater/` — `electron-updater` against
   `https://updates.wave.online/wave-monitor`, gated by a staged-rollout
   check (`rollout.json` pin + stable machine cohort; fails closed).
-  Ported from the create-wave-app electron template.
+  Ported from the create-wave-app electron template. <!-- # guard:allow electron template attribution -->
 - `scripts/` — `smoke.sh`, `cold-boot.sh`, `brand-proof.sh`,
   `rollout-sim.sh` (+ `local-feed.mjs` stub feed). `--smoke-test` mode in
   main prints one `SMOKE_OK` JSON line and quits.
@@ -80,7 +80,7 @@ for the nine release gates (`npm run release-check` runs 1–5).
 `.buildkite/pipeline.yml` mirrors the GHA gates (lint/typecheck/vitest,
 foundation checks, governance A_BLOCK, gitleaks + content-policy guards).
 Every step's `command` is exactly one checked-in repo script path — the
-fpc-isolated agents run with `--no-command-eval`, so never inline commands.
+fpc-isolated agents run with `--no-command-eval`, so never inline commands. <!-- # guard:allow BK pipeline keyword, not a repo reference -->
 
 Host-side setup (not expressible in `pipeline.yml` — this section is the
 pointer target):
@@ -161,4 +161,4 @@ WebRTC + Web Audio APIs.
 ---
 
 <!-- wave-standard-footer -->
-<sub><b><a href="https://wave.online">wave.online</a></b> &nbsp;·&nbsp; <a href="https://docs.wave.online">Docs</a> &nbsp;·&nbsp; <a href="https://dev.wave.online">Developers</a> &nbsp;·&nbsp; <a href="https://agents.wave.online">For agents</a></sub>
+<sub><b><a href="https://wave.online">wave.online</a></b> &nbsp;·&nbsp; <a href="https://docs.wave.online">Docs</a> &nbsp;·&nbsp; <a href="https://dev.wave.online">Developers</a> &nbsp;·&nbsp; <a href="https://agents.wave.online">For agents</a></sub> <!-- # guard:allow public agents.wave.online URL; guard term matches at dot boundary -->
