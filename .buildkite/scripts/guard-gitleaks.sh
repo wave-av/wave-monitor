@@ -7,49 +7,87 @@
 # not assume sudo, so the verified binary runs from a temp dir instead — same
 # scan, smaller footprint.
 #
-# Base-pinned config (WAVE-27332): the PR checkout is only the scan SOURCE.
-# The rules come from the canonical .gitleaks.toml at the merge-base with the
-# base branch, so a PR that neuters its own config is still scanned with
-# teeth. Base without a config falls back to the worktree copy with a loud
-# warning; an unresolvable base fails closed (exit 2). Main builds use the
-# worktree config (HEAD is trusted there). GITLEAKS_BIN, when set, skips the
-# download (test seam; CI never sets it).
+# Fork trust (WAVE-27332): on PR builds NOTHING executes from the PR checkout
+# except as scan source. main() first re-execs the base-branch-tip copy of
+# THIS script (a fork that rewrites the guard just re-installs the trusted
+# copy), then scans the PR worktree with the base-tip canonical
+# .gitleaks.toml. Base tip without a config scans with gitleaks built-in
+# default rules (teeth guaranteed, zero trust in PR content) plus a loud
+# warning. Unresolvable base, missing base script, or missing base-branch
+# name all fail closed (exit 2). Main builds run directly with the worktree
+# config (HEAD is trusted there). GITLEAKS_BIN, when set, skips the download
+# (test seam; CI never sets it).
 set -euo pipefail
 
 GITLEAKS_VERSION="8.30.1"
 GITLEAKS_SHA256="551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb"
+SCRIPT_REL_PATH=".buildkite/scripts/guard-gitleaks.sh"
 
-# resolve_config <workdir>: print the config path gitleaks must use.
-resolve_config() {
-  local work="$1" pr="${BUILDKITE_PULL_REQUEST:-false}"
-  if [[ "$pr" == "false" || -z "$pr" ]]; then
-    echo ".gitleaks.toml"
-    return 0
-  fi
-  local base_branch="${BUILDKITE_PULL_REQUEST_BASE_BRANCH:-}"
-  if [[ -z "$base_branch" ]]; then
+is_pr_build() {
+  [[ "${BUILDKITE_PULL_REQUEST:-false}" != "false" && -n "${BUILDKITE_PULL_REQUEST:-}" ]]
+}
+
+base_ref() {
+  local branch="${BUILDKITE_PULL_REQUEST_BASE_BRANCH:-}"
+  if [[ -z "$branch" ]]; then
     echo "guard-gitleaks: PR build without BUILDKITE_PULL_REQUEST_BASE_BRANCH — failing closed" >&2
     return 2
   fi
-  local base_rev=""
-  base_rev="$(git merge-base HEAD "origin/${base_branch}" 2>/dev/null)" || base_rev=""
-  if [[ -z "$base_rev" ]]; then
-    echo "guard-gitleaks: cannot resolve merge-base with origin/${base_branch} — failing closed" >&2
-    return 2
-  fi
-  if git cat-file -e "${base_rev}:.gitleaks.toml" 2>/dev/null; then
-    git show "${base_rev}:.gitleaks.toml" > "${work}/base.gitleaks.toml"
-    echo "${work}/base.gitleaks.toml"
-  else
-    echo "guard-gitleaks: WARNING base ${base_rev} has no .gitleaks.toml — falling back to worktree config" >&2
+  echo "origin/${branch}"
+}
+
+# trust_self: replace this PR-controlled script with the base-tip copy and
+# re-exec it. Caller must already be cd'd into the git repo. Never returns.
+trust_self() {
+  local base
+  base="$(base_ref)" || exit 2
+  git rev-parse --verify --quiet "$base" >/dev/null 2>&1 \
+    || { echo "guard-gitleaks: cannot resolve $base — failing closed" >&2; exit 2; }
+  git cat-file -e "${base}:${SCRIPT_REL_PATH}" 2>/dev/null \
+    || { echo "guard-gitleaks: base $base has no guard script — failing closed" >&2; exit 2; }
+  git show "${base}:${SCRIPT_REL_PATH}" > "$WORK/trusted-guard-gitleaks.sh" \
+    || { echo "guard-gitleaks: cannot extract trusted guard script — failing closed" >&2; exit 2; }
+  # ${1+"$@"}: "$@" under set -u on old bash (macOS 3.2) errors with no args.
+  exec env GUARD_TRUSTED=1 GUARD_WORK="$WORK" bash "$WORK/trusted-guard-gitleaks.sh" ${1+"$@"}
+}
+
+# resolve_config: print the config path, or DEFAULTS for built-in rules.
+# Uses $WORK (caller sets it). Never prints a PR-controlled path on PR builds.
+resolve_config() {
+  if ! is_pr_build; then
     echo ".gitleaks.toml"
+    return 0
+  fi
+  local base
+  base="$(base_ref)" || return 2
+  git rev-parse --verify --quiet "$base" >/dev/null 2>&1 \
+    || { echo "guard-gitleaks: cannot resolve $base — failing closed" >&2; return 2; }
+  if git cat-file -e "${base}:.gitleaks.toml" 2>/dev/null; then
+    git show "${base}:.gitleaks.toml" > "$WORK/base.gitleaks.toml"
+    echo "$WORK/base.gitleaks.toml"
+  else
+    echo "guard-gitleaks: WARNING no .gitleaks.toml at $base — scanning with gitleaks built-in default rules" >&2
+    echo "DEFAULTS"
   fi
 }
 
 main() {
-  cd "$(dirname "${BASH_SOURCE[0]}")/../.."
-  WORK="$(mktemp -d)"
+  if [[ "${GUARD_TRUSTED:-}" == "1" ]]; then
+    # Re-exec'd from trust_self: cwd is already the repo root (preserved
+    # across exec); BASH_SOURCE now points into $WORK so it must NOT re-cd.
+    WORK="${GUARD_WORK:-}"
+    if [[ -z "$WORK" ]]; then
+      echo "guard-gitleaks: trusted re-exec without GUARD_WORK — failing closed" >&2
+      exit 2
+    fi
+  else
+    cd "$(dirname "${BASH_SOURCE[0]}")/../.." || exit 2
+    WORK="$(mktemp -d)"
+  fi
   trap 'rm -rf "$WORK"' EXIT
+  if [[ "${GUARD_TRUSTED:-}" != "1" ]] && is_pr_build; then
+    trust_self ${1+"$@"}
+  fi
   local bin
   if [[ -n "${GITLEAKS_BIN:-}" ]]; then
     bin="$GITLEAKS_BIN"
@@ -64,10 +102,14 @@ main() {
     bin="$WORK/gitleaks"
   fi
   local config
-  config="$(resolve_config "$WORK")" || exit 2
-  "$bin" detect --no-git --source . --config "$config" --redact --no-banner --exit-code 1
+  config="$(resolve_config)" || exit 2
+  if [[ "$config" == "DEFAULTS" ]]; then
+    "$bin" detect --no-git --source . --redact --no-banner --exit-code 1
+  else
+    "$bin" detect --no-git --source . --config "$config" --redact --no-banner --exit-code 1
+  fi
 }
 
 if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
-  main "$@"
+  main ${1+"$@"}
 fi
