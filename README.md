@@ -85,9 +85,10 @@ fpc-isolated agents run with `--no-command-eval`, so never inline commands.
 Host-side setup (not expressible in `pipeline.yml` — this section is the
 pointer target):
 
-- **Queues.** All steps run on `fpc-isolated`, except `governance-enforce`
-  and `guard-content-policy`, which run on `fpc-isolated-secrets` (the only
-  queue allowed host-injected values).
+- **Queues.** All steps run on `fpc-isolated`, except `governance-enforce`,
+  `guard-content-policy`, and `probe-absence-env`, which run on
+  `fpc-isolated-secrets` (the only queue allowed host-injected values; the
+  env probe rides it to assert absence where injection happens).
 - **Host-injected values, by step key** (never inline in the pipeline file;
   each name must be in this repo's `repos.yaml` `secrets` allowlist):
   - `governance-enforce`: `GH_PACKAGES_READ_TOKEN` — a token with GH-Packages
@@ -112,6 +113,46 @@ pointer target):
 - **Pipeline settings.** Enable "Cancel intermediate builds" (the GHA
   `concurrency` / `cancel-in-progress` equivalent).
 
+## Absence probes (R2 fork-build tripwires)
+
+Three absence probes watching fork-shaped builds (WAVE-26519, epic
+WAVE-26503), currently report-mode: FLAGs annotate, internal errors fail the
+build, and promotion to build-blocking follows PROMOTION.md. KINDs only,
+never values — findings carry paths + KINDs, receipts carry env NAMES,
+nothing else.
+
+- `probe-absence-env` (`.buildkite/scripts/probe-absence-env.mjs`) —
+  zero-injection allowlist assertion on env names. Must run on
+  `fpc-isolated-secrets` (the queue where injection happens — anywhere else
+  the assertion is vacuous) with NOTHING mapped to its step key.
+- `probe-absence-fs` — workspace + tmp + npm-cache scan with the vendored
+  inspector value-shape families. Runs on `fpc-isolated`.
+- `probe-absence-log` — workspace-reachable log/artifact KIND scan. Runs on
+  `fpc-isolated`.
+
+Detector tables are vendored into
+`.buildkite/scripts/absence-scanner.mjs` (no cross-repo imports at runtime).
+Suite: `npx vitest run .buildkite/tests/absence-scanner.test.mjs` (also under
+plain `npm test`). Report-mode wiring + dated promotion plan:
+`.buildkite/absence-probes-PROMOTION.md`.
+
+Host-side setup (not expressible in `pipeline.yml` — this section is the
+pointer target):
+
+- **Zero injection.** The host maps no injected values to any `probe-*` step
+  key, on any queue, on any build. `probe-absence-env` self-verifies this
+  every run (a FLAG naming a pipeline secret on a fork build means the host
+  failed to withhold; generic unexpected-name FLAGs are allowlist tuning,
+  not withholding failures).
+- **Base-pinned execution.** The host MUST check out the trusted base revision
+  (not the PR head) for the `probe-*` steps, so a fork cannot neuter the
+  detectors it is observed by. Same control the secrets-queue steps need;
+  R1 fixtures prove the dependency. Pending verification (PROMOTION.md P1) —
+  until it holds, fork-observable probe behavior is advisory, not proof.
+- **Ungated.** Probe steps carry no `depends_on` and sit in no wait-segment
+  shadow: gating them on guards would blind them exactly when guards fail.
+  (Stacking note: S2's `pipeline-gating.py` needs the `probe-*` exemption
+  in PROMOTION.md P4.)
 ## License
 
 [Apache-2.0](./LICENSE). No vendor-licensed binaries; all rendering uses standard

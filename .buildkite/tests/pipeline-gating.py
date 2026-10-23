@@ -26,6 +26,11 @@ PIPELINE = ROOT / ".buildkite" / "pipeline.yml"
 
 SECRETS_QUEUE = "fpc-isolated-secrets"
 GUARD_KEYS = ("guard-gitleaks", "guard-content-policy")
+EXPECTED_PROBE_COMMANDS = {
+    "probe-absence-env": ".buildkite/scripts/probe-absence-env.mjs",
+    "probe-absence-fs": ".buildkite/scripts/probe-absence-fs.mjs",
+    "probe-absence-log": ".buildkite/scripts/probe-absence-log.mjs",
+}
 
 EXPECTED_GUARDS = (
     {
@@ -83,10 +88,41 @@ def main():
 
     commands = [s for s in steps if isinstance(s, dict) and "command" in s]
 
-    # 2 — guards first, byte-identical fields.
-    first_two = [c.get("key") for c in commands[:2]]
+    # P4 (PROMOTION.md): R2 absence probes (probe-*) run UNGATED by design —
+    # zero injection by construction (host maps nothing to probe-* keys,
+    # probe-env self-verifies every run), so they are not secret-bearing even
+    # when one asserts on the secrets queue. They must precede the guards: the
+    # fork-refusing content-policy guard would otherwise shadow them on exactly
+    # the fork builds they watch. All position/gating checks below run over the
+    # gated (non-probe) steps; probes are asserted separately.
+    probes = [c for c in commands if (c.get("key") or "").startswith("probe-")]
+    gated = [c for c in commands if not (c.get("key") or "").startswith("probe-")]
+    check("2p exactly three absence probes present", len(probes) == 3,
+          f"got {[c.get('key') for c in probes]}")
+    check("2p probe keys pinned (no probe-evil smuggling)",
+          sorted(c.get("key") for c in probes) == ["probe-absence-env", "probe-absence-fs", "probe-absence-log"],
+          f"got {sorted(c.get('key') for c in probes)}")
+    if probes:
+        check("2p probes precede all gated steps",
+              all(commands.index(p) < commands.index(g) for p in probes for g in gated),
+              f"got {[c.get('key') for c in commands[:4]]}")
+        for p in probes:
+            check(f"2p {p.get('key')} soft-fails FLAG only, never internal errors",
+                  p.get("soft_fail") == [{"exit_status": 1}],
+                  f"got {p.get('soft_fail')!r}")
+            check(f"2p {p.get('key')} command pinned to vendored script",
+                  p.get("command") == EXPECTED_PROBE_COMMANDS.get(p.get("key")),
+                  f"got {p.get('command')!r}")
+            check(f"2p {p.get('key')} never on secrets queue",
+                  p.get("key") == "probe-absence-env" or (p.get("agents") or {}).get("queue") != SECRETS_QUEUE,
+                  "only probe-absence-env may ride the secrets queue (it asserts absence there); any other probe-* key would bypass gating")
+            check(f"2p {p.get('key')} carries no depends_on", "depends_on" not in p,
+                  "probe must run ungated")
+
+    # 2 — guards first (among gated steps), byte-identical fields.
+    first_two = [c.get("key") for c in gated[:2]]
     check("2a guards are the first two command steps", tuple(first_two) == GUARD_KEYS, f"got {first_two}")
-    for cmd, exp in zip(commands[:2], EXPECTED_GUARDS):
+    for cmd, exp in zip(gated[:2], EXPECTED_GUARDS):
         for field in ("label", "key", "command", "timeout_in_minutes"):
             check(f"2b {exp['key']}.{field} identical", cmd.get(field) == exp[field],
                   f"got {cmd.get(field)!r}")
@@ -126,7 +162,7 @@ def main():
         return must
 
     # 3 — every secret-bearing step gated on BOTH guards.
-    secret_steps = [c for c in commands if (c.get("agents") or {}).get("queue") == SECRETS_QUEUE]
+    secret_steps = [c for c in gated if (c.get("agents") or {}).get("queue") == SECRETS_QUEUE]
     check("3a secret-bearing steps found", len(secret_steps) >= 1, f"got {len(secret_steps)}")
     for s in secret_steps:
         mp = must_pass(s)
@@ -170,7 +206,7 @@ def main():
         ran, blocked = simulate(gkey)
         leaked = [k for k in ran
                   if (by_key[k].get("agents") or {}).get("queue") == SECRETS_QUEUE
-                  and k != gkey]
+                  and k != gkey and not k.startswith("probe-")]
         check(f"4 failing {gkey} blocks every secret-bearing step", not leaked,
               f"blocked={blocked}" if not leaked else f"LEAKED={leaked}")
         print(f"    simulate {gkey}=fail: ran={ran} blocked={blocked}")
