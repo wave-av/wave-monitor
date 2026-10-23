@@ -110,6 +110,9 @@ pointer target):
   trusted re-run of a fork PR. Both `governance-enforce.sh` and
   `guard-content-policy.sh` additionally refuse
   when `BUILDKITE_PULL_REQUEST_REPO != BUILDKITE_REPO`.
+  `guard-gitleaks.sh` likewise never trusts PR-head rules: PR builds scan
+  the checkout with the canonical `.gitleaks.toml` from the merge-base
+  with the base branch (WAVE-27332).
 - **Pipeline settings.** Enable "Cancel intermediate builds" (the GHA
   `concurrency` / `cancel-in-progress` equivalent).
 
