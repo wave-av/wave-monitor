@@ -32,6 +32,7 @@ import {
   loadTermsFile,
   emitReceipt,
   parseArgs,
+  assertRootsAllowed,
   DEFAULT_MAX_BYTES,
 } from './absence-scanner.mjs';
 
@@ -66,6 +67,7 @@ function main(argv, env) {
     ? defaultRoots(env)
     : String(rootsRaw).split(':').map((s) => s.trim()).filter(Boolean);
   if (roots.length === 0) throw new Error('no scan roots configured');
+  if (isForkShaped(env) && String(rootsRaw) !== '') assertRootsAllowed(roots, defaultRoots(env));
 
   const termsPath = args.terms_file ?? env.ABSENCE_PROBE_TERMS_FILE ?? '';
   const maxBytes = Number(args.max_bytes ?? env.ABSENCE_PROBE_MAX_BYTES ?? DEFAULT_MAX_BYTES);

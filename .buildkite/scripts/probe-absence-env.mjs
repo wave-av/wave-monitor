@@ -36,10 +36,19 @@ function main(argv, env) {
     .split(/[\s,]+/)
     .map((s) => s.trim())
     .filter(Boolean);
-  for (const name of extraAllow) OPERATIONAL_ALLOW.add(name);
 
   const forkShaped = isForkShaped(env);
   const notes = [];
+  // A fork PR can set ABSENCE_PROBE_ENV_ALLOW via pipeline.yml env, so on a
+  // fork-shaped build any extension is itself a FLAG and the extension is
+  // ignored — otherwise the watched party could mute its watcher (review
+  // finding, PR #124). Trusted and local runs keep the extension.
+  const forkExtension = forkShaped && extraAllow.length > 0;
+  if (!forkExtension) {
+    for (const name of extraAllow) OPERATIONAL_ALLOW.add(name);
+  } else {
+    notes.push(`allowlist extension ignored on fork-shaped build (${extraAllow.length} name(s)) — treated as FLAG`);
+  }
   if (!env.BUILDKITE_PULL_REQUEST_REPO && !env.BUILDKITE_REPO) {
     notes.push('no BUILDKITE repo vars: not a Buildkite job env (local/R1 run)');
   } else if (!env.BUILDKITE_PULL_REQUEST_REPO) {
@@ -68,6 +77,16 @@ function main(argv, env) {
         why: 'secret-named env var outside the operational allowlist; extend ABSENCE_PROBE_ENV_ALLOW if legitimate',
       });
     }
+  }
+
+  if (forkExtension) {
+    hits.push({
+      path: '(env)',
+      line: 0,
+      kinds: ['fork-allowlist-extension'],
+      name: '(withheld)',
+      why: 'nonempty ABSENCE_PROBE_ENV_ALLOW on a fork-shaped build — extension ignored and flagged; the watched party must not mute its watcher',
+    });
   }
 
   const verdict = hits.length > 0 ? 'FLAG' : 'PASS';

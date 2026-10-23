@@ -1,9 +1,9 @@
 # R2 absence probes — promotion plan (WAVE-26519, epic WAVE-26503)
 
 Status as of 2026-10-20: REPORT MODE. The three `probe-*` steps in
-`.buildkite/pipeline.yml` carry `soft_fail: true`: a FLAG annotates the build
-but never breaks it. This file is the dated plan to build-failing mode
-(acceptance criterion 5).
+`.buildkite/pipeline.yml` soft-fail FLAG (exit 1) only: a FLAG annotates the
+build but never breaks it, while internal errors (exit 2) still fail it.
+This file is the dated plan to build-failing mode (acceptance criterion 5).
 
 ## What the probes are
 
@@ -54,7 +54,7 @@ measured false positives on file trees — see the scoping note in the scanner.
 
 When P0–P4 are all closed AND the probes have 7 consecutive green cycles
 (real builds + R1 rig runs; FLAGs only on true positives): delete the three
-`soft_fail: true` lines in `.buildkite/pipeline.yml` (one commit). No script
+`soft_fail` blocks in `.buildkite/pipeline.yml` (one commit). No script
 change needed — the probes already exit 1 on FLAG, 2 on internal error.
 Earliest flip: 2026-10-27 (P1 review). Hard backstop: the flip rides with the
 S4 re-verdict — per-case OKs stay until S4 is all-PASS either way, so probes

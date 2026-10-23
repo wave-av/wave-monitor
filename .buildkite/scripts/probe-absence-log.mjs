@@ -26,22 +26,22 @@ import {
   loadTermsFile,
   emitReceipt,
   parseArgs,
+  assertRootsAllowed,
   DEFAULT_MAX_BYTES,
 } from './absence-scanner.mjs';
 
 function defaultInputs(env) {
   const workspace = env.BUILDKITE_BUILD_CHECKOUT_PATH ?? process.cwd();
   const inputs = [];
-  try {
-    const all = collectFiles(workspace);
-    for (const f of all) {
-      if (f.endsWith('.log') || f.includes('/artifacts/')) inputs.push(f);
-    }
-  } catch {
-    // Workspace unreadable: the scan below reports zero inputs (SKIP + note).
+  const skipped = [];
+  // No catch: a workspace collection failure must reach the outer handler as
+  // ERROR/exit 2, never masquerade as an empty scan (review finding, PR #124).
+  const all = collectFiles(workspace, { onSkip: (s) => skipped.push(s) });
+  for (const f of all) {
+    if (f.endsWith('.log') || f.includes('/artifacts/')) inputs.push(f);
   }
   // Also cover a conventionally staged artifacts dir explicitly.
-  return { workspace, inputs };
+  return { workspace, inputs, skipped };
 }
 
 function main(argv, env) {
@@ -60,13 +60,17 @@ function main(argv, env) {
     notes.push('no terms file: nda-term family unscanned (report-mode note; enforcing-mode FAIL per PROMOTION.md P2)');
   }
 
+  const forkShaped = isForkShaped(env);
   if (String(pathsRaw) !== '') {
     const entries = String(pathsRaw).split(':').map((s) => s.trim()).filter(Boolean);
+    if (entries.length === 0) throw new Error('ABSENCE_PROBE_LOG_PATHS set but no valid entries (configuration error)');
+    if (forkShaped) assertRootsAllowed(entries, [env.BUILDKITE_BUILD_CHECKOUT_PATH ?? process.cwd()]);
     const { families, hits, excluded, scannedRoots, filesScanned } = scanRoots(entries, { terms, maxBytes });
     return finish({ families, hits, excluded, scannedRoots, filesScanned, notes });
   }
 
-  const { workspace, inputs } = defaultInputs(env);
+  const { workspace, inputs, skipped } = defaultInputs(env);
+  const excluded = skipped;
   notes.push(`default input collection under workspace ${workspace}: ${inputs.length} log/artifact file(s)`);
   // File population: value-shape families only (mirrors scanRoots — the NAME
   // families read false here and are covered by probe-env instead). Claiming
@@ -79,7 +83,6 @@ function main(argv, env) {
     'nda-pattern': true,
   };
   const hits = [];
-  const excluded = [];
   let filesScanned = 0;
   for (const f of inputs) {
     const r = scanFile(f, { terms, maxBytes });

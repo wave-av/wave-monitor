@@ -85,9 +85,10 @@ fpc-isolated agents run with `--no-command-eval`, so never inline commands.
 Host-side setup (not expressible in `pipeline.yml` — this section is the
 pointer target):
 
-- **Queues.** All steps run on `fpc-isolated`, except `governance-enforce`
-  and `guard-content-policy`, which run on `fpc-isolated-secrets` (the only
-  queue allowed host-injected values).
+- **Queues.** All steps run on `fpc-isolated`, except `governance-enforce`,
+  `guard-content-policy`, and `probe-absence-env`, which run on
+  `fpc-isolated-secrets` (the only queue allowed host-injected values; the
+  env probe rides it to assert absence where injection happens).
 - **Host-injected values, by step key** (never inline in the pipeline file;
   each name must be in this repo's `repos.yaml` `secrets` allowlist):
   - `governance-enforce`: `GH_PACKAGES_READ_TOKEN` — a token with GH-Packages
@@ -114,9 +115,11 @@ pointer target):
 
 ## Absence probes (R2 fork-build tripwires)
 
-Three fail-closed probes asserting no secret material is observable in
-fork-shaped builds (WAVE-26519, epic WAVE-26503). KINDs only, never values —
-findings carry paths + KINDs, receipts carry env NAMES, nothing else.
+Three absence probes watching fork-shaped builds (WAVE-26519, epic
+WAVE-26503), currently report-mode: FLAGs annotate, internal errors fail the
+build, and promotion to build-blocking follows PROMOTION.md. KINDs only,
+never values — findings carry paths + KINDs, receipts carry env NAMES,
+nothing else.
 
 - `probe-absence-env` (`.buildkite/scripts/probe-absence-env.mjs`) —
   zero-injection allowlist assertion on env names. Must run on
@@ -138,11 +141,14 @@ pointer target):
 
 - **Zero injection.** The host maps no injected values to any `probe-*` step
   key, on any queue, on any build. `probe-absence-env` self-verifies this
-  every run (its FLAG on a fork build means the host failed to withhold).
-- **Base-pinned execution.** The host checks out the trusted base revision
+  every run (a FLAG naming a pipeline secret on a fork build means the host
+  failed to withhold; generic unexpected-name FLAGs are allowlist tuning,
+  not withholding failures).
+- **Base-pinned execution.** The host MUST check out the trusted base revision
   (not the PR head) for the `probe-*` steps, so a fork cannot neuter the
   detectors it is observed by. Same control the secrets-queue steps need;
-  R1 fixtures prove the dependency.
+  R1 fixtures prove the dependency. Pending verification (PROMOTION.md P1) —
+  until it holds, fork-observable probe behavior is advisory, not proof.
 - **Ungated.** Probe steps carry no `depends_on` and sit in no wait-segment
   shadow: gating them on guards would blind them exactly when guards fail.
   (Stacking note: S2's `pipeline-gating.py` needs the `probe-*` exemption

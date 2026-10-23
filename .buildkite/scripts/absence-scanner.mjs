@@ -29,7 +29,7 @@
 
 import { readdirSync, statSync, readFileSync, writeFileSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
-import { join, basename } from 'node:path';
+import { join, basename, relative, resolve } from 'node:path';
 
 // --- Family 1-3 tables (vendored from board-redact.mjs + rl-corpus-detectors.mjs)
 
@@ -104,7 +104,7 @@ const NDA_PATTERNS = [
   ['aws-akid', /AKIA[0-9A-Z]{16}/],
   ['private-key', /-----BEGIN [A-Z ]*PRIVATE KEY-----/],
   ['personal-email-provider',
-    /[\w.+-]+@(?:gmail|googlemail|icloud|hotmail|outlook|live|yahoo|proton|protonmail|pm)\.(?:com|me|ch)\b/],
+    /[\w.+-]{1,64}@(?:gmail|googlemail|icloud|hotmail|outlook|live|yahoo|proton|protonmail|pm)\.(?:com|me|ch)\b/],
   ['credential-shape',
     /(?:\b(?:sk|pk|rk)_(?:live|test|prod)_[A-Za-z0-9]{16,}|\bgh[pousr]_[A-Za-z0-9]{30,}|\bgithub_pat_[A-Za-z0-9_]{30,}|\bdp\.(?:st|pt|ct|sa)\.[A-Za-z0-9_-]{20,}|\bAKIA[0-9A-Z]{16}\b|\bxox[abprs]-[A-Za-z0-9-]{20,}|\bsbp_[a-f0-9]{30,}|\beyJ[A-Za-z0-9_-]{30,}\.[A-Za-z0-9_-]{30,}\.[A-Za-z0-9_-]{20,}|-----BEGIN (?:RSA |EC |OPENSSH |DSA )?PRIVATE KEY-----)/],
 ];
@@ -179,7 +179,15 @@ export const DEFAULT_SKIP_DIRS = new Set(['.git', 'node_modules']);
 // and the guard's own scripts necessarily document leak shapes —
 // content-policy.sh applies the same exclusion to itself.
 export const DEFAULT_SKIP_FILES = new Set(['.git']);
-export const DEFAULT_SKIP_PATH_DIRS = new Set(['public-repo-guard']);
+// Root-relative exact detector-docs paths (committed, review-conspicuous).
+// Narrow by construction: a fork hiding files here must touch guard-owned
+// paths (visible in review + CODEOWNERS); base-pinned execution (PROMOTION
+// P1) removes even that residual by scanning the trusted tree.
+export const DEFAULT_SKIP_PATH_DIRS = new Set([
+  'scripts/public-repo-guard',
+  'rig/config-current/scripts/public-repo-guard',
+  'rig/config-patched/scripts/public-repo-guard',
+]);
 export const DEFAULT_MAX_BYTES = 1024 * 1024;
 
 // Recursively collect files under root. Skips DEFAULT_SKIP_DIRS (+ extra),
@@ -199,7 +207,11 @@ export function collectFiles(root, { skipDirs = DEFAULT_SKIP_DIRS, onSkip = null
     }
     for (const ent of entries) {
       const full = join(dir, ent.name);
-      if (full.split('/').some((seg) => DEFAULT_SKIP_PATH_DIRS.has(seg))) {
+      // Detector-docs exclusion is ROOT-RELATIVE EXACT (review finding, PR
+      // #124): a bare segment match at any depth would let a fork hide files
+      // under an unrelated */public-repo-guard/ directory.
+      const rel = relative(root, full).split('\\').join('/');
+      if ([...DEFAULT_SKIP_PATH_DIRS].some((p) => rel === p || rel.startsWith(`${p}/`))) {
         onSkip?.({ path: full, reason: 'detector-docs-excluded' });
         continue;
       }
@@ -210,7 +222,9 @@ export function collectFiles(root, { skipDirs = DEFAULT_SKIP_DIRS, onSkip = null
         }
         walk(full);
       } else if (ent.isFile()) {
-        if (DEFAULT_SKIP_FILES.has(ent.name)) {
+        // .git FILE skip is root-level only (worktree gitlink). A nested .git
+        // file is scanned — fail closed rather than trust the basename.
+        if (DEFAULT_SKIP_FILES.has(ent.name) && dir === root) {
           onSkip?.({ path: full, reason: 'excluded-file' });
           continue;
         }
@@ -302,6 +316,21 @@ export function scanRoots(roots, { terms = [], maxBytes = DEFAULT_MAX_BYTES } = 
     }
   }
   return { families, hits, excluded, scannedRoots, filesScanned };
+}
+
+// Fork-build input guard (review finding, PR #124): explicit scan roots come
+// from env/CLI, which a fork PR can set via pipeline.yml env. On fork-shaped
+// builds every root must resolve inside one of the probe's own default roots
+// (checkout / tmp / npm-cache); anything else is a configuration ERROR, never
+// a silent scan of host paths. Trusted and local runs are unconstrained.
+export function assertRootsAllowed(roots, allowedRoots) {
+  const allowed = allowedRoots.map((r) => `${resolve(r)}/`);
+  for (const root of roots) {
+    const resolved = resolve(root);
+    if (!allowed.some((a) => resolved === a.slice(0, -1) || resolved.startsWith(a))) {
+      throw new Error(`scan root outside allowed roots on fork-shaped build: ${root}`);
+    }
+  }
 }
 
 // Load a terms file (one term per line). Fail-closed: missing/unreadable/

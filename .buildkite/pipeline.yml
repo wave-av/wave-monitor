@@ -25,10 +25,11 @@
 # .buildkite/tests/pipeline-gating.py.
 #
 # R2 absence probes (WAVE-26519, epic WAVE-26503) — REPORT MODE (2026-10-20):
-# the three probe-* steps run on every build with `soft_fail: true`, so a FLAG
-# annotates but never breaks the build. Promotion to build-failing follows the
-# dated plan in .buildkite/absence-probes-PROMOTION.md; the flip is deleting
-# the three `soft_fail` lines once its gates hold.
+# the three probe-* steps run on every build soft-failing FLAG (exit 1) only, so
+# a FLAG annotates but never breaks the build while internal errors (exit 2)
+# still fail it. Promotion to build-failing follows the dated plan in
+# .buildkite/absence-probes-PROMOTION.md; the flip is deleting the three
+# `soft_fail` blocks once its gates hold.
 #
 # Host requirements for the probe steps (see README.md "Absence probes"
 # runbook — NOT expressible in this file):
@@ -49,7 +50,8 @@ steps:
     agents:
       queue: fpc-isolated-secrets
     timeout_in_minutes: 5
-    soft_fail: true
+    soft_fail:
+      - exit_status: 1
     retry: &retry-agent-loss
       automatic:
         - exit_status: -1
@@ -66,7 +68,8 @@ steps:
     agents:
       queue: fpc-isolated
     timeout_in_minutes: 10
-    soft_fail: true
+    soft_fail:
+      - exit_status: 1
     retry: *retry-agent-loss
 
   - label: ":scroll: probe absence-log (report mode)"
@@ -75,7 +78,8 @@ steps:
     agents:
       queue: fpc-isolated
     timeout_in_minutes: 10
-    soft_fail: true
+    soft_fail:
+      - exit_status: 1
     retry: *retry-agent-loss
 
   - label: ":key: guard gitleaks"

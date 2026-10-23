@@ -26,6 +26,11 @@ PIPELINE = ROOT / ".buildkite" / "pipeline.yml"
 
 SECRETS_QUEUE = "fpc-isolated-secrets"
 GUARD_KEYS = ("guard-gitleaks", "guard-content-policy")
+EXPECTED_PROBE_COMMANDS = {
+    "probe-absence-env": ".buildkite/scripts/probe-absence-env.mjs",
+    "probe-absence-fs": ".buildkite/scripts/probe-absence-fs.mjs",
+    "probe-absence-log": ".buildkite/scripts/probe-absence-log.mjs",
+}
 
 EXPECTED_GUARDS = (
     {
@@ -102,8 +107,12 @@ def main():
               all(commands.index(p) < commands.index(g) for p in probes for g in gated),
               f"got {[c.get('key') for c in commands[:4]]}")
         for p in probes:
-            check(f"2p {p.get('key')} report-mode soft_fail", p.get("soft_fail") is True,
+            check(f"2p {p.get('key')} soft-fails FLAG only, never internal errors",
+                  p.get("soft_fail") == [{"exit_status": 1}],
                   f"got {p.get('soft_fail')!r}")
+            check(f"2p {p.get('key')} command pinned to vendored script",
+                  p.get("command") == EXPECTED_PROBE_COMMANDS.get(p.get("key")),
+                  f"got {p.get('command')!r}")
             check(f"2p {p.get('key')} never on secrets queue",
                   p.get("key") == "probe-absence-env" or (p.get("agents") or {}).get("queue") != SECRETS_QUEUE,
                   "only probe-absence-env may ride the secrets queue (it asserts absence there); any other probe-* key would bypass gating")
