@@ -1,9 +1,10 @@
 #!/usr/bin/env node
 // probe-absence-fs — R2 probe (ii): filesystem post-step scan (WAVE-26519).
 //
-// Scans workspace + tmp + npm caches with the vendored inspector families
-// (secret-value, secret-assignment, secret-name, nda-term, nda-pattern) and
-// FLAGs on any hit. Findings carry path + line + KIND only — never content.
+// Scans workspace + tmp + npm caches with the vendored inspector value-shape
+// families (secret-value, nda-term, nda-pattern; the NAME families read false
+// in file mode and are covered by probe-env instead) and FLAGs on any hit.
+// Findings carry path + line + KIND only — never content.
 //
 // Default roots (colon-separated ABSENCE_PROBE_ROOTS overrides; argv
 // --roots ... wins for local/R1 runs):
@@ -70,7 +71,9 @@ function main(argv, env) {
   if (isForkShaped(env) && String(rootsRaw) !== '') assertRootsAllowed(roots, defaultRoots(env));
 
   const termsPath = args.terms_file ?? env.ABSENCE_PROBE_TERMS_FILE ?? '';
-  const maxBytes = Number(args.max_bytes ?? env.ABSENCE_PROBE_MAX_BYTES ?? DEFAULT_MAX_BYTES);
+  const maxRaw = args.max_bytes ?? env.ABSENCE_PROBE_MAX_BYTES ?? DEFAULT_MAX_BYTES;
+  if (typeof maxRaw === 'boolean') throw new Error('bad max-bytes cap');
+  const maxBytes = Number(maxRaw);
   if (!Number.isFinite(maxBytes) || maxBytes <= 0) throw new Error('bad max-bytes cap');
 
   const notes = [];

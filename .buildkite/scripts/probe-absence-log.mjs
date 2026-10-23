@@ -48,7 +48,9 @@ function main(argv, env) {
   const args = parseArgs(argv);
   const pathsRaw = args.paths ?? env.ABSENCE_PROBE_LOG_PATHS ?? '';
   const termsPath = args.terms_file ?? env.ABSENCE_PROBE_TERMS_FILE ?? '';
-  const maxBytes = Number(args.max_bytes ?? env.ABSENCE_PROBE_MAX_BYTES ?? DEFAULT_MAX_BYTES);
+  const maxRaw = args.max_bytes ?? env.ABSENCE_PROBE_MAX_BYTES ?? DEFAULT_MAX_BYTES;
+  if (typeof maxRaw === 'boolean') throw new Error('bad max-bytes cap');
+  const maxBytes = Number(maxRaw);
   if (!Number.isFinite(maxBytes) || maxBytes <= 0) throw new Error('bad max-bytes cap');
 
   const notes = [];
