@@ -30,7 +30,8 @@ export function sha256Hex(bytes) {
  * Q4 signs this digest; v1 only binds the fields together.
  */
 export function digestProvenance(doc) {
-  const { digest: _ignored, ...rest } = doc;
+  const rest = { ...doc };
+  delete rest.digest;
   return `sha256:${sha256Hex(canonicalize(rest))}`;
 }
 
