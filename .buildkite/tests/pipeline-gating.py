@@ -355,17 +355,17 @@ def selftest():
                   "manual: {allowed: true, permit_on_passed: false}}")
     GUARD_A = ("  - label: ':key: guard gitleaks'\n    key: guard-gitleaks\n"
                "    command: .buildkite/scripts/guard-gitleaks.sh\n"
-               "    agents: {queue: fpc-isolated}\n    timeout_in_minutes: 10\n"
+               "    agents: {queue: fpc-isolated}\n    timeout_in_minutes: 10\n"  # guard:allow BK agents/queue keywords in synthetic fixture, not a repo reference
                f"    {RETRY_YAML}\n")
     GUARD_B = ("  - label: ':clipboard: guard content-policy'\n"
                "    key: guard-content-policy\n"
                "    command: .buildkite/scripts/guard-content-policy.sh\n"
-               "    agents: {queue: fpc-isolated-secrets}\n"
+               "    agents: {queue: fpc-isolated-secrets}\n"  # guard:allow BK agents/queue keywords in synthetic fixture, not a repo reference
                "    timeout_in_minutes: 10\n"
                f"    {RETRY_YAML}\n")
     SECRET_JOB = ("  - label: secret job\n    key: secret-job\n"
                   "    command: .buildkite/scripts/job.sh\n"
-                  "    agents: {queue: fpc-isolated-secrets}\n")
+                  "    agents: {queue: fpc-isolated-secrets}\n")  # guard:allow BK agents/queue keywords in synthetic fixture, not a repo reference
     FILES = ("guard-gitleaks.sh", "guard-content-policy.sh", "job.sh")
     VALID = ("steps:\n" + GUARD_A + "  - wait: ~\n" + GUARD_B
              + "  - wait: ~\n" + SECRET_JOB)
@@ -467,10 +467,10 @@ def selftest():
         t("gap6 unknown key loud", True, "")
     gov = ("  - label: gov\n    key: governance-enforce\n"
            "    command: .buildkite/scripts/job.sh\n"
-           "    agents: {queue: fpc-isolated-secrets}\n")
+           "    agents: {queue: fpc-isolated-secrets}\n")  # guard:allow BK agents/queue keywords in synthetic fixture, not a repo reference
     evil = ("  - label: evil\n    key: evil-secret\n"
             "    command: .buildkite/scripts/job.sh\n"
-            "    agents: {queue: fpc-isolated-secrets}\n")
+            "    agents: {queue: fpc-isolated-secrets}\n")  # guard:allow BK agents/queue keywords in synthetic fixture, not a repo reference
     leak_pipe = ("steps:\n" + GUARD_A + "  - wait: ~\n" + GUARD_B
                  + "  - wait: ~\n" + gov + evil)
     rows = _evaluate_yaml(leak_pipe, FILES)
