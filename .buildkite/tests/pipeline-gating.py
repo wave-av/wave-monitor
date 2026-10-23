@@ -274,14 +274,27 @@ def evaluate(pipeline_path, root):
         rows.append((f"    simulate {gkey}=fail: ran={ran} blocked={blocked}", True, ""))
 
     # 5 — no-command-eval convention, hardened (gap 4): an existing
-    # .sh/.mjs directly under .buildkite/scripts/, no metacharacters.
+    # .sh/.mjs directly under .buildkite/scripts/, no metacharacters, and
+    # the RESOLVED target must stay inside the scripts dir (is_file follows
+    # symlinks — a bare existence check is bypassable).
     pat = re.compile(r"^\.buildkite/scripts/[A-Za-z0-9_][A-Za-z0-9_.-]*\.(sh|mjs)$")
+    scripts_dir = (root / ".buildkite" / "scripts").resolve()
     for c in commands:
         cmd = c.get("command", "")
         shape_ok = isinstance(cmd, str) and bool(pat.match(cmd))
+        target = (root / cmd).resolve() if shape_ok else None
+        try:
+            contained = target is not None and target.relative_to(scripts_dir) is not None
+        except ValueError:
+            contained = False
         exists_ok = shape_ok and (root / cmd).is_file()
-        check(f"5 {c.get('key')} pinned existing script path", shape_ok and exists_ok,
-              f"got {cmd!r}" + ("" if exists_ok else " (missing from checkout)" if shape_ok else ""))
+        ok = shape_ok and exists_ok and contained
+        detail = f"got {cmd!r}"
+        if shape_ok and not exists_ok:
+            detail += " (missing from checkout)"
+        elif shape_ok and not contained:
+            detail += " (resolves outside .buildkite/scripts/)"
+        check(f"5 {c.get('key')} pinned existing script path", ok, detail)
 
     # 6 — governance-enforce failure gate (gap 6): simulate() already fails
     # loudly on unknown keys; when the step exists its failure must block
@@ -402,6 +415,30 @@ def selftest():
                                         ".buildkite/scripts/sub/job.sh"), FILES)
     t("gap4 subdir path caught", bool(_failed(rows, "5 secret-job")), "")
 
+    # Review hardening: symlinked script escaping the scripts dir fails.
+    root = _write_tree(FILES)
+    outside = root / "outside.sh"
+    outside.write_text("#!/bin/sh\n")
+    link = root / ".buildkite" / "scripts" / "job.sh"
+    link.unlink()
+    link.symlink_to(outside)
+    pipe = root / ".buildkite" / "pipeline.yml"
+    pipe.write_text(VALID)
+    rows = evaluate(str(pipe), root)
+    t("review symlink escape caught", bool(_failed(rows, "5 secret-job")), "")
+
+    # Review hardening: strict argv (typos fail loudly, never test default).
+    t("review unknown flag rejected", main(["--nope"]) == 2, "")
+    t("review value-less --pipeline rejected", main(["--pipeline"]) == 2, "")
+    vroot = _write_tree(FILES)
+    vpipe = vroot / ".buildkite" / "pipeline.yml"
+    vpipe.write_text(VALID)
+    import io as _io
+    from contextlib import redirect_stdout as _rs
+    with _rs(_io.StringIO()):
+        rc = main(["--pipeline", str(vpipe)])
+    t("review root defaults to pipeline checkout", rc == 0, f"rc={rc}")
+
     # Gap 5 engine: 4b is load-bearing — same-segment later step escapes.
     doc3 = yaml.safe_load("steps:\n" + GUARD_A.replace("    retry:", "    # retry:") +
                           "  - label: z\n    key: zed\n    command: .buildkite/scripts/job.sh\n")
@@ -436,14 +473,32 @@ def main(argv):
     if "--selftest" in argv:
         return selftest()
     pipeline = DEFAULT_PIPELINE
-    root = ROOT
+    root = None  # default: derived from the pipeline path (its own checkout)
     args = list(argv)
     while args:
         a = args.pop(0)
-        if a == "--pipeline" and args:
-            pipeline = Path(args.pop(0))
-        elif a == "--root" and args:
-            root = Path(args.pop(0))
+        if a in ("--pipeline", "--root"):
+            if not args:
+                print(f"usage: pipeline-gating.py [--pipeline PATH] [--root DIR] [--selftest]; {a} needs a value",
+                      file=sys.stderr)
+                return 2
+            if a == "--pipeline":
+                pipeline = Path(args.pop(0))
+            else:
+                root = Path(args.pop(0))
+        elif a.startswith("--"):
+            print(f"usage: pipeline-gating.py [--pipeline PATH] [--root DIR] [--selftest]; unknown option {a}",
+                  file=sys.stderr)
+            return 2
+        else:
+            print(f"usage: pipeline-gating.py [--pipeline PATH] [--root DIR] [--selftest]; unexpected argument {a}",
+                  file=sys.stderr)
+            return 2
+    if root is None:
+        # A pipeline at <root>/.buildkite/pipeline.yml belongs to <root>;
+        # existence checks must run against the PIPELINE's checkout, not the
+        # checker's (review: a typo'd --pipeline must not silently pass).
+        root = pipeline.resolve().parent.parent
     rows = evaluate(str(pipeline), root)
     failures = [n for (n, ok, _d) in rows if not ok and not n.startswith("    simulate")]
     for name, ok, detail in rows:
