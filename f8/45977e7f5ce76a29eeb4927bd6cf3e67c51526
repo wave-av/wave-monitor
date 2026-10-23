@@ -1,0 +1,16 @@
+.buildkite/provenance/bin/emit-provenance.mjs
+  h_af5ac1a9798224 26,93-98,129-134
+.buildkite/tests/emit-provenance.test.mjs
+  h_af5ac1a9798224 7-8,56-58,64-82,91-93,97-100,103
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.23",
+  "base_commit_sha": "f845977e7f5ce76a29eeb4927bd6cf3e67c51526",
+  "prompts": {},
+  "humans": {
+    "h_af5ac1a9798224": {
+      "author": "Jake Fineman <jakefineman@gmail.com>"
+    }
+  }
+}
