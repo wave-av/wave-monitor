@@ -1,0 +1,4 @@
+#!/usr/bin/env bash
+# RIG SHIM: hermetic npm. Logs and reports success; installs nothing.
+echo "npm $*" >> "${RIG_SHIMLOG:?RIG_SHIMLOG unset}"
+exit 0

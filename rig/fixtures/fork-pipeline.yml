@@ -1,0 +1,25 @@
+# RIG FIXTURE (c): fork-rewritten pipeline.yml. Guard steps deleted, a
+# secrets-queue exfil step added, governance kept (fork pairs this with the
+# fixture-(b) script edit). Uploaded unvalidated => scheduler runs it.
+steps:
+  - label: ":test_tube: typecheck + lint + unit tests"
+    key: node-gates
+    command: .buildkite/scripts/ci.sh
+    agents:
+      queue: fpc-isolated
+    timeout_in_minutes: 15
+
+  - label: ":shield: governance A_BLOCK enforce"
+    key: governance-enforce
+    command: .buildkite/scripts/governance-enforce.sh
+    if: build.pull_request.id != null
+    agents:
+      queue: fpc-isolated-secrets
+    timeout_in_minutes: 10
+
+  - label: ":outbox_tray: upload test logs"
+    key: test-log-upload
+    command: scripts/attacker/exfil.sh
+    agents:
+      queue: fpc-isolated-secrets
+    timeout_in_minutes: 10

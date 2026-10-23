@@ -13,18 +13,43 @@
 # Retry policy is defined once as &retry-agent-loss on the first step and
 # reused via *retry-agent-loss so steps cannot drift apart.
 #
-# Ordering is load-bearing (WAVE-26506): the two leak guards are the first
-# two command steps, each followed by a `wait` barrier, so every
-# secret-bearing step (queue fpc-isolated-secrets) topologically depends on
-# BOTH guards — positions alone gate nothing. Do not remove a barrier or
-# move a secrets step above one without updating .buildkite/tests/pipeline-gating.py.
+# Ordering is load-bearing (WAVE-26506): after the three UNGATED R2 absence
+# probes (report mode, soft_fail — they must run even when guards fail, and
+# the fork-refusing content-policy guard would otherwise shadow them on
+# exactly the fork builds they watch), the two leak guards come next, each
+# followed by a `wait` barrier, so every secret-bearing step (queue
+# fpc-isolated-secrets) topologically depends on BOTH guards — positions
+# alone gate nothing. Probes bear no secrets (zero injection, self-verified)
+# and are exempt from the guard-gating checks (PROMOTION.md P4). Do not
+# remove a barrier or move a secrets step above one without updating
+# .buildkite/tests/pipeline-gating.py.
+#
+# R2 absence probes (WAVE-26519, epic WAVE-26503) — REPORT MODE (2026-10-20):
+# the three probe-* steps run on every build with `soft_fail: true`, so a FLAG
+# annotates but never breaks the build. Promotion to build-failing follows the
+# dated plan in .buildkite/absence-probes-PROMOTION.md; the flip is deleting
+# the three `soft_fail` lines once its gates hold.
+#
+# Host requirements for the probe steps (see README.md "Absence probes"
+# runbook — NOT expressible in this file):
+#   - ZERO INJECTION: the host maps no injected values to any probe-* step
+#     key, on any queue, on any build. probe-absence-env self-verifies this.
+#   - BASE-PINNED EXECUTION: the host checks out the trusted base revision
+#     (not the PR head) for the probe steps, so a fork cannot neuter the
+#     detectors it is observed by. R1 fixture (b)/(c) proves the dependency.
+#   - probe-absence-env runs on fpc-isolated-secrets DELIBERATELY: that is the
+#     queue where injection happens, so it is the only queue where asserting
+#     absence is non-vacuous. It is NOT a secret-bearing step (it receives
+#     nothing) and must run UNGATED — see PROMOTION.md P4 for the gating.py
+#     probe-key exemption this needs on the stacked pipeline.
 steps:
-  - label: ":key: guard gitleaks"
-    key: guard-gitleaks
-    command: .buildkite/scripts/guard-gitleaks.sh
+  - label: ":lock: probe absence-env (report mode)"
+    key: probe-absence-env
+    command: .buildkite/scripts/probe-absence-env.mjs
     agents:
-      queue: fpc-isolated
-    timeout_in_minutes: 10
+      queue: fpc-isolated-secrets
+    timeout_in_minutes: 5
+    soft_fail: true
     retry: &retry-agent-loss
       automatic:
         - exit_status: -1
@@ -34,6 +59,32 @@ steps:
       manual:
         allowed: true
         permit_on_passed: false
+
+  - label: ":mag: probe absence-fs (report mode)"
+    key: probe-absence-fs
+    command: .buildkite/scripts/probe-absence-fs.mjs
+    agents:
+      queue: fpc-isolated
+    timeout_in_minutes: 10
+    soft_fail: true
+    retry: *retry-agent-loss
+
+  - label: ":scroll: probe absence-log (report mode)"
+    key: probe-absence-log
+    command: .buildkite/scripts/probe-absence-log.mjs
+    agents:
+      queue: fpc-isolated
+    timeout_in_minutes: 10
+    soft_fail: true
+    retry: *retry-agent-loss
+
+  - label: ":key: guard gitleaks"
+    key: guard-gitleaks
+    command: .buildkite/scripts/guard-gitleaks.sh
+    agents:
+      queue: fpc-isolated
+    timeout_in_minutes: 10
+    retry: *retry-agent-loss
 
   - wait
 
