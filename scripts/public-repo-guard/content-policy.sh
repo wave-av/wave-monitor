@@ -111,10 +111,12 @@ check() {
   # .npmrc, …) and committed-but-gitignored files — a public leak hides there too.
   # --no-ignore also drops .ignore/.rgignore (any depth or parent dir), so the
   # IGNORE globs (built-ins + .guardignore) are the only exclusion source (MF-W1).
+  # -a: a NUL byte must not turn a file into "binary" and hide its matches
+  # (MF-W4); RIPGREP_CONFIG_PATH is dropped so no config can add flags.
   # rg exit: 0=match, 1=no match, >=2=real error → FAIL CLOSED (never pass a gate
   # silently because the scanner errored).
   local raw rc
-  raw="$(rg -nP --hidden --no-ignore "${IGNORE[@]}" -- "$re" . 2>/dev/null)"; rc=$?
+  raw="$(env -u RIPGREP_CONFIG_PATH rg -nP -a --hidden --no-ignore "${IGNORE[@]}" -- "$re" . 2>/dev/null)"; rc=$?
   if (( rc >= 2 )); then
     echo "::error title=public-repo-guard ($name)::ripgrep failed (exit $rc) scanning rule '$name' — failing closed."; exit 2
   fi
@@ -221,7 +223,7 @@ check BLOCK private-key      '-----BEGIN [A-Z ]*PRIVATE KEY-----'               
 # node_modules stays excluded). --hidden because these are dotfiles; --no-ignore
 # so a committed-but-gitignored (or .ignore/.rgignore-hidden) .env is still
 # caught; fail CLOSED on rg error.
-_envraw="$(rg --files --hidden --no-ignore -g '.env' -g '.env.*' "${IGNORE[@]}" 2>/dev/null)"; _envrc=$?
+_envraw="$(env -u RIPGREP_CONFIG_PATH rg --files --hidden --no-ignore -g '.env' -g '.env.*' "${IGNORE[@]}" 2>/dev/null)"; _envrc=$?
 if (( _envrc >= 2 )); then
   echo "::error title=public-repo-guard (committed-dotenv)::ripgrep failed (exit $_envrc) — failing closed."; exit 2
 fi
