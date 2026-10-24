@@ -85,10 +85,18 @@ fpc-isolated agents run with `--no-command-eval`, so never inline commands. <!--
 Host-side setup (not expressible in `pipeline.yml` — this section is the
 pointer target):
 
-- **Queues.** All steps run on `fpc-isolated`, except `governance-enforce`,
-  `guard-content-policy`, and `probe-absence-env`, which run on
-  `fpc-isolated-secrets` (the only queue allowed host-injected values; the
-  env probe rides it to assert absence where injection happens).
+- **Queues.** `fpc-isolated-secrets` is the only queue that receives
+  host-injected values. `probe-absence-env` and `guard-content-policy` run
+  on it only when the build is not a pull request and the branch is the
+  pipeline default (`build.pull_request.id == null` and
+  `build.branch == pipeline.default_branch`). A pull-request check alone is
+  not enough: a branch push is not a pull request. Pull requests and every
+  other branch run `probe-absence-env-pr` and `guard-content-policy-pr` on
+  `fpc-isolated` with no injected values. `guard-content-policy-pr` sets
+  `WAVE_JOB_GUARD_PR=1` itself; that value is not a secret.
+  `governance-enforce` is still pull-request-only on `fpc-isolated-secrets`.
+  Moving it to `fpc-isolated` needs a localhost package proxy, which this
+  pipeline does not use yet. Every other step runs on `fpc-isolated`.
 - **Host-injected values, by step key** (never inline in the pipeline file;
   each name must be in this repo's `repos.yaml` `secrets` allowlist):
   - `governance-enforce`: `GH_PACKAGES_READ_TOKEN` — a token with GH-Packages
@@ -102,7 +110,11 @@ pointer target):
     secrets channel carries the list as `GUARD_PRIVATE_REPOS_01.._06`
     (Doppler `wave`/`bkjobs`, granted by step key in the host
     `secrets-allowlist.tsv`); the wrapper assembles them when the full var
-    is unset and fails closed unless all six are present.
+    is unset and fails closed unless all six are present. Do not grant
+    `GUARD_PRIVATE_REPOS` or `GH_PACKAGES_READ_TOKEN` to
+    `guard-content-policy-pr` or any `probe-*` key. The env probe keeps
+    `GH_PACKAGES_READ_TOKEN` on its always-forbidden name list and flags
+    the name if a job actually receives it.
 - **Fork trust.** The secrets-queue steps consume host credentials, so the
   host must (a) run them from the **trusted base ref** as a base-branch build
   — re-running the fork build itself keeps fork metadata
@@ -128,9 +140,12 @@ never values — findings carry paths + KINDs, receipts carry env NAMES,
 nothing else.
 
 - `probe-absence-env` (`.buildkite/scripts/probe-absence-env.mjs`) —
-  zero-injection allowlist assertion on env names. Must run on
-  `fpc-isolated-secrets` (the queue where injection happens — anywhere else
-  the assertion is vacuous) with NOTHING mapped to its step key.
+  zero-injection allowlist assertion on env names. On a non-pull-request
+  build of the pipeline default branch it runs on `fpc-isolated-secrets`
+  (the queue where injection happens — anywhere else the assertion is
+  vacuous) with NOTHING mapped to its step key. Every other build runs the
+  same script as `probe-absence-env-pr` on `fpc-isolated`. Neither env step
+  soft-fails.
 - `probe-absence-fs` — workspace + tmp + npm-cache scan with the vendored
   inspector value-shape families. Runs on `fpc-isolated`.
 - `probe-absence-log` — workspace-reachable log/artifact KIND scan. Runs on

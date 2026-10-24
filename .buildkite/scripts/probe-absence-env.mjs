@@ -18,10 +18,14 @@
 //      (space-separated, set in the pipeline step env block — steps take no
 //      command arguments under no-command-eval).
 //
-// The probe step runs on queue fpc-isolated-secrets with NO injection mapped:
-// the secrets queue (not fpc-isolated) is what makes check A non-vacuous —
-// a host that injects broadly would trip it. Report-mode wiring soft-fails
-// the step; see absence-probes-PROMOTION.md.
+// Default-branch builds that are not pull requests run this script on queue
+// fpc-isolated-secrets with NO injection mapped: the secrets queue (not
+// fpc-isolated) is what makes check A non-vacuous — a host that injects
+// broadly would trip it. Pull-request builds and every other branch run the
+// same script on fpc-isolated, which receives no secrets, so check A cannot
+// see secrets-queue injection there. Neither step soft-fails: a FLAG fails
+// the build. GH_PACKAGES_READ_TOKEN stays in FORBIDDEN_ALWAYS as a tripwire
+// whether or not any step still requests it. See absence-probes-PROMOTION.md.
 //
 // Exit: 0 PASS, 1 FLAG (finding), 2 internal error (fail closed).
 
