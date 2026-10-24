@@ -938,3 +938,109 @@ _leak_line() {
   # Outside PR mode the documented marker still applies.
   [ "$status" -eq 0 ]
 }
+
+# MF-W1: rg's own ignore files in the pull request must not exempt a leak.
+# Each case runs twice: with this checkout's policy on origin main, and with
+# a "legacy" main policy that still honours .ignore/.rgignore (the bootstrap
+# state, before the policy gained --no-ignore), so the wrapper's own deletion
+# of PR ignore files is what catches the leak there.
+_legacy_main_policy() {
+  sed 's/ --no-ignore / --no-ignore-vcs /' "$POLICY" \
+    > "$ORIGIN/scripts/public-repo-guard/content-policy.sh"
+  grep -q -- '--no-ignore-vcs' "$ORIGIN/scripts/public-repo-guard/content-policy.sh"
+  _origin_commit legacy-policy
+}
+
+# _ignore_case <variant> <ignore-file> <ignore-content> <leak-file>
+_ignore_case() {
+  _pr_fixture
+  if [ "$1" = "legacy" ]; then
+    _legacy_main_policy
+  fi
+  mkdir -p "$PRDIR/$(dirname "$2")" "$PRDIR/$(dirname "$4")"
+  printf '%s\n' "$3" > "$PRDIR/$2"
+  _leak_line > "$PRDIR/$4"
+  _run_pr_wrapper
+  rm -rf "$TDIR"
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"abs-user-path"* ]]
+  [[ "$output" == *"$4"* ]]
+}
+
+@test "PR mode: a PR .ignore does not hide a leak (MF-W1)" {
+  if ! command -v rg >/dev/null 2>&1; then
+    skip "rg not installed"
+  fi
+  _ignore_case current .ignore leak.md leak.md
+  _ignore_case legacy .ignore leak.md leak.md
+}
+
+@test "PR mode: a PR docs/.rgignore does not hide a leak (MF-W1)" {
+  if ! command -v rg >/dev/null 2>&1; then
+    skip "rg not installed"
+  fi
+  _ignore_case current docs/.rgignore '*' docs/leak.md
+  _ignore_case legacy docs/.rgignore '*' docs/leak.md
+}
+
+@test "PR mode: a nested PR .gitignore does not hide a leak (MF-W1)" {
+  if ! command -v rg >/dev/null 2>&1; then
+    skip "rg not installed"
+  fi
+  _ignore_case current sub/deep/.gitignore leak.md sub/deep/leak.md
+  _ignore_case legacy sub/deep/.gitignore leak.md sub/deep/leak.md
+}
+
+@test "PR mode: a symlinked PR .ignore is removed, its target untouched (MF-W1)" {
+  if ! command -v rg >/dev/null 2>&1; then
+    skip "rg not installed"
+  fi
+  _pr_fixture
+  _legacy_main_policy
+  printf 'leak.md\n' > "$TDIR/outside-ignore"
+  ln -s "$TDIR/outside-ignore" "$PRDIR/.ignore"
+  _leak_line > "$PRDIR/leak.md"
+  _run_pr_wrapper
+  local target
+  target="$(cat "$TDIR/outside-ignore")"
+  rm -rf "$TDIR"
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"leak.md"* ]]
+  [ "$target" = "leak.md" ]
+}
+
+@test "PR mode: the default branch's wrapper also drops PR ignore files (MF-W1)" {
+  if ! command -v rg >/dev/null 2>&1; then
+    skip "rg not installed"
+  fi
+  _pr_fixture trusted
+  printf '*\n' > "$PRDIR/.rgignore"
+  _leak_line > "$PRDIR/leak.md"
+  _run_pr_wrapper
+  rm -rf "$TDIR"
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"MAIN-COPY-WRAPPER"* ]]
+  [[ "$output" == *"leak.md"* ]]
+}
+
+@test "content-policy ignores .ignore/.rgignore/.gitignore in full mode too (MF-W1)" {
+  if ! command -v rg >/dev/null 2>&1; then
+    skip "rg not installed"
+  fi
+  TDIR="$(mktemp -d)"
+  git init -q "$TDIR"
+  mkdir -p "$TDIR/docs" "$TDIR/sub"
+  printf 'a.md\n' > "$TDIR/.ignore"
+  printf '*\n' > "$TDIR/docs/.rgignore"
+  printf 'c.md\n' > "$TDIR/sub/.gitignore"
+  _leak_line > "$TDIR/a.md"
+  _leak_line > "$TDIR/docs/b.md"
+  _leak_line > "$TDIR/sub/c.md"
+  run env -u GUARD_PRIVATE_REPOS -u WAVE_JOB_GUARD_PR BUILDKITE_PULL_REQUEST=false \
+    bash "$POLICY" "$TDIR"
+  rm -rf "$TDIR"
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"a.md"* ]]
+  [[ "$output" == *"b.md"* ]]
+  [[ "$output" == *"c.md"* ]]
+}
