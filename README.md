@@ -83,8 +83,14 @@ Every step's `command` is exactly one checked-in repo script path — the
 fpc-isolated agents run with `--no-command-eval`, so never inline commands. <!-- # guard:allow BK pipeline keyword, not a repo reference -->
 Pull requests that change `.buildkite/` do not receive `WAVE_REGISTRY_READ_TOKEN`.
 `.buildkite/upload.sh` uploads `.buildkite/pipeline-pr-self-check.yml` for
-those builds: bats and shellcheck on `fpc-isolated`, with no secret. Other
-builds still upload `pipeline.yml`.
+those builds: bats, shellcheck, and `guard-content-policy-pr` (see below) on
+`fpc-isolated`, with no secret. Other builds still upload `pipeline.yml`.
+"Changes `.buildkite/`" is measured against the pipeline's default branch
+(`BUILDKITE_PIPELINE_DEFAULT_BRANCH`), never the pull request's base branch,
+which the author picks; an unset or invalid default branch exits 2.
+`upload.sh` also refuses (exit 2) to upload a pipeline file that lacks its
+content-policy step (`guard-content-policy` in `pipeline.yml`,
+`guard-content-policy-pr` in the self-check).
 
 Host-side setup (not expressible in `pipeline.yml` — this section is the
 pointer target):
@@ -107,8 +113,10 @@ pointer target):
     (Doppler `wave`/`bkjobs`, granted by step key in the host
     `secrets-allowlist.tsv`); the wrapper assembles them when the full var
     is unset and fails closed unless all six are present. Pull-request
-    builds do not receive the list. Set the non-secret `WAVE_JOB_GUARD_PR=1`
-    only on those builds. `.buildkite/scripts/guard-content-policy.sh` and
+    builds do not receive the list. The non-secret `WAVE_JOB_GUARD_PR=1` is
+    set only by the pull-request step `guard-content-policy-pr` (in
+    `pipeline-pr-self-check.yml`, queue `fpc-isolated`).
+    `.buildkite/scripts/guard-content-policy.sh` and
     `scripts/public-repo-guard/content-policy.sh` then run every rule except
     private-repo, and only when `BUILDKITE_PULL_REQUEST` is a positive
     pull-request number and `GUARD_PRIVATE_REPOS` / `GUARD_PRIVATE_REPOS_01`..`_06`
@@ -122,6 +130,25 @@ pointer target):
     value exits 2. PR mode is not a private-name clearance: both scripts log
     `private-repo rule NOT checked (PR mode, no list)`, including on the
     final verdict line.
+- **Trusted content policy on pull requests (WAVE-28333 M1).** In PR mode the
+  wrapper never runs the pull request's policy. It fetches
+  `refs/heads/$BUILDKITE_PIPELINE_DEFAULT_BRANCH` and runs that branch's
+  `scripts/public-repo-guard/content-policy.sh` and `.guardignore` against a
+  copy of the pull-request tree (data only, `.git` excluded). Inline
+  `# guard:allow` markers are ignored in PR mode, since they are pull-request
+  content. A missing or invalid default branch, a failed fetch, or a default
+  branch without the policy exits 2; nothing falls back to the pull
+  request's copy. Once the default branch's wrapper carries the line
+  `# guard-content-policy trusted-pr-runner: v1`, the pull request's wrapper
+  re-execs that copy instead of running these steps itself. Until then
+  (bootstrap, i.e. the pull request that adds the line) the pull request's
+  wrapper runs them, still with the default branch's policy. **Residual:**
+  a Buildkite step's command is always a checkout script
+  (`--no-command-eval`), and `upload.sh` is checkout code too, so a pull
+  request that edits `.buildkite/` can still change the wrapper or drop the
+  step. Closing that needs a host-side anchor (a host-owned uploader or a
+  step rendered from host-side CI code) plus a required status check on
+  `main` (M2).
 - **Fork trust.** The secrets-queue steps consume host credentials, so the
   host must (a) run them from the **trusted base ref** as a base-branch build
   — re-running the fork build itself keeps fork metadata
