@@ -39,7 +39,10 @@
 # runs that branch's scripts/public-repo-guard/content-policy.sh and
 # .guardignore against a copy of the pull-request tree, which is data only.
 # Inline `# guard:allow` markers are ignored in PR mode: they are
-# pull-request content and must not exempt pull-request lines. When the
+# pull-request content and must not exempt pull-request lines. The copy's
+# .ignore, .rgignore and .gitignore files (any depth) are deleted too
+# (MF-W1), so the default branch's .guardignore is the only exclusion
+# source. When the
 # default branch's copy of THIS wrapper carries the trusted-runner marker
 # below, the PR copy re-execs that copy (`--trusted-stage`) and does nothing
 # else itself. A missing default branch, fetch failure, or missing policy on
@@ -159,13 +162,22 @@ _guard_run_trusted_pr() {
     || _guard_fail "cannot copy the pull-request tree"
   # .guardignore comes from the default branch, never from the pull request.
   rm -rf "$_guard_work/tree/.guardignore"
+  # rg's own ignore files are pull-request content too (MF-W1): a committed
+  # .ignore, .rgignore or .gitignore at any depth must not exempt a file.
+  # main's .guardignore stays the only exclusion source.
+  find "$_guard_work/tree" \( -name .ignore -o -name .rgignore -o -name .gitignore \) \
+    \( -type f -o -type l \) -delete \
+    || _guard_fail "cannot remove pull-request ignore files from the tree copy"
+  if [ -n "$(find "$_guard_work/tree" \( -name .ignore -o -name .rgignore -o -name .gitignore \) -print -quit)" ]; then
+    _guard_fail "a pull-request ignore file survived in the tree copy"
+  fi
   if git cat-file -e "$ref:.guardignore" 2>/dev/null; then
     git show "$ref:.guardignore" > "$_guard_work/tree/.guardignore" \
       || _guard_fail "cannot extract the default-branch .guardignore"
   fi
   # Inline markers are pull-request content: neutralize every one in the copy.
   rc=0
-  (cd "$_guard_work/tree" && rg -l0 --hidden --no-ignore-vcs -F 'guard:allow' .) \
+  (cd "$_guard_work/tree" && rg -l0 --hidden --no-ignore -F 'guard:allow' .) \
     > "$_guard_work/markers.lst" || rc=$?
   if [ "$rc" -ge 2 ]; then
     _guard_fail "ripgrep failed (exit $rc) listing guard:allow markers"
@@ -179,7 +191,7 @@ _guard_run_trusted_pr() {
   done < "$_guard_work/markers.lst"
   echo "guard-content-policy: '# guard:allow' markers ignored in PR mode ($_n file(s)); policy and .guardignore from '$default'."
   rc=0
-  (cd "$_guard_work/tree" && bash "$_guard_work/content-policy.sh" .) || rc=$?
+  (cd "$_guard_work/tree" && env -u RIPGREP_CONFIG_PATH bash "$_guard_work/content-policy.sh" .) || rc=$?
   if [ "$rc" -eq 0 ]; then
     echo "guard-content-policy: content policy OK for the rules that ran ('$default' policy); private-repo rule NOT checked (PR mode, no list)"
   fi
