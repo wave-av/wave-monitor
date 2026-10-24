@@ -10,6 +10,14 @@ Run from the repo root, no repo dependencies:
   rule; the flag together with `GUARD_PRIVATE_REPOS` or any
   `GUARD_PRIVATE_REPOS_01`..`_06` exits 2; the flag on a non-pull-request
   build, and a missing list with the flag unset, both fail closed.
+  PR-mode scans use the default branch's policy and `.guardignore` from a
+  throwaway origin repo (WAVE-28333 M1): a no-op PR policy, a PR
+  `.guardignore`, a PR `# guard:allow` marker, or an author-picked base
+  branch cannot pass a leak; a missing default branch or policy exits 2.
+- Upload selection: `bats .buildkite/tests/upload-pr-pipeline.bats` (needs
+  bash + git; pyyaml optional). `upload.sh` compares with the default
+  branch, fails closed without one, and never uploads a pipeline file that
+  lacks its content-policy step.
 - S2 guard order + gating proof: `python3 .buildkite/tests/pipeline-gating.py`
   (needs python3 + pyyaml)
 
@@ -17,4 +25,5 @@ Both exit non-zero on failure. They are not wired into `ci.sh`: the FPC
 agent image is not known to carry bats/pyyaml, and breaking `node-gates`
 on missing test tooling would be worse than no gate. Pull requests that
 change `.buildkite/` upload `pipeline-pr-self-check.yml` instead, which
-runs `bats .buildkite/tests/*.bats` and shellcheck on `.buildkite/scripts`.
+runs `bats .buildkite/tests/*.bats`, shellcheck on `.buildkite/scripts`, and
+`guard-content-policy-pr`.
