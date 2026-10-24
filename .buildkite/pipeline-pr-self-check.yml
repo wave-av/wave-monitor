@@ -1,6 +1,9 @@
 # Pull requests that change .buildkite/ upload this file instead of
 # pipeline.yml. Those builds do not receive WAVE_REGISTRY_READ_TOKEN.
-# One checked-in script, fpc-isolated, no secrets and no private registry.
+# One checked-in script per step, fpc-isolated, no secrets and no private
+# registry. guard-content-policy-pr runs the default branch's content policy
+# against this pull request's tree (WAVE-28333 M1); .buildkite/upload.sh
+# refuses to upload this file without that step.
 steps:
   - label: ":bat: bats + shellcheck"
     key: bk-self-check
@@ -8,7 +11,7 @@ steps:
     agents: # guard:allow BK pipeline keyword, not a repo reference
       queue: fpc-isolated
     timeout_in_minutes: 15
-    retry:
+    retry: &retry-agent-loss
       automatic:
         - exit_status: -1
           limit: 1
@@ -17,3 +20,13 @@ steps:
       manual:
         allowed: true
         permit_on_passed: false
+
+  - label: ":clipboard: guard content-policy (PR, default-branch policy)"
+    key: guard-content-policy-pr
+    command: .buildkite/scripts/guard-content-policy.sh
+    env:
+      WAVE_JOB_GUARD_PR: "1"
+    agents: # guard:allow BK pipeline keyword, not a repo reference
+      queue: fpc-isolated
+    timeout_in_minutes: 10
+    retry: *retry-agent-loss
