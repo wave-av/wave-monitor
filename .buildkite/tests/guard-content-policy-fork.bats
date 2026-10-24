@@ -19,6 +19,10 @@
 # non-empty flag value exits 2; the flag
 # together with any list variable exits 2; the flag on a non-pull-request
 # build fails closed; a missing list with the flag unset still fails closed.
+# WAVE-28333 M1: PR mode runs the default branch's policy and .guardignore
+# (never the PR's, never the PR base branch's), ignores inline markers,
+# re-execs the default branch's wrapper once it carries the marker, and
+# fails closed when the default branch or its policy is missing.
 
 setup() {
   SCRIPT_DIR="$(cd "$(dirname "$BATS_TEST_FILENAME")" && pwd)"
@@ -302,36 +306,75 @@ setup() {
 # PR mode. The hitting name is a token already in this tree, so a run that
 # still applies private-repo exits 1. The sentinel is not in the tree and
 # must never be printed.
-# The wrapper cds to its own repo root, so PR-mode positive tests run a copy
-# of the wrapper and policy inside a clean temp tree. A full-repo scan is
-# environment-dependent (a linked worktree's .git pointer file trips
-# abs-user-path), so no PR-mode test asserts exit 0 on this checkout.
-_clean_tree() {
+# PR mode runs the DEFAULT BRANCH's policy (WAVE-28333 M1), so positive
+# tests build a throwaway origin repo whose main branch holds the trusted
+# policy, clone it as the pull-request checkout, and run the PR copy of
+# the wrapper there. The scan is of a copy of that checkout without .git,
+# so a linked worktree's .git pointer file cannot trip abs-user-path.
+#
+# _pr_fixture [trusted]: "trusted" also puts a wrapper carrying the
+# trusted-runner marker on main (post-bootstrap); without it main has only
+# the policy (bootstrap, as for the PR that introduces the marker).
+_pr_fixture() {
   TDIR="$(mktemp -d)"
-  mkdir -p "$TDIR/.buildkite/scripts" "$TDIR/scripts/public-repo-guard"
-  cp "$SCRIPT" "$TDIR/.buildkite/scripts/guard-content-policy.sh"
-  cp "$POLICY" "$TDIR/scripts/public-repo-guard/content-policy.sh"
-  printf 'clean\n' > "$TDIR/ok.txt"
+  ORIGIN="$TDIR/origin"
+  PRDIR="$TDIR/pr"
+  git init -q "$ORIGIN"
+  git -C "$ORIGIN" checkout -q -b main
+  mkdir -p "$ORIGIN/scripts/public-repo-guard" "$ORIGIN/.buildkite/scripts"
+  cp "$POLICY" "$ORIGIN/scripts/public-repo-guard/content-policy.sh"
+  if [ "${1:-}" = "trusted" ]; then
+    # Tag the default-branch copy so a test can see which copy scanned.
+    sed 's/^  _guard_stage=2$/  _guard_stage=2; echo "MAIN-COPY-WRAPPER"/' "$SCRIPT" \
+      > "$ORIGIN/.buildkite/scripts/guard-content-policy.sh"
+  fi
+  printf 'clean\n' > "$ORIGIN/ok.txt"
+  git -C "$ORIGIN" add -A
+  git -C "$ORIGIN" -c user.name=fixture -c user.email=fixture@example.invalid \
+    commit -qm base
+  git clone -q "$ORIGIN" "$PRDIR"
+  git -C "$PRDIR" checkout -q -b pr
+  mkdir -p "$PRDIR/.buildkite/scripts"
+  cp "$SCRIPT" "$PRDIR/.buildkite/scripts/guard-content-policy.sh"
+}
+
+# Commit to origin main (used for .guardignore and branch-switch fixtures).
+_origin_commit() {
+  git -C "$ORIGIN" add -A
+  git -C "$ORIGIN" -c user.name=fixture -c user.email=fixture@example.invalid \
+    commit -qm "$1"
+}
+
+_run_pr_wrapper() {
+  run env -u GUARD_PRIVATE_REPOS -u GUARD_PRIVATE_REPOS_01 -u GUARD_PRIVATE_REPOS_02 \
+    -u GUARD_PRIVATE_REPOS_03 -u GUARD_PRIVATE_REPOS_04 -u GUARD_PRIVATE_REPOS_05 \
+    -u GUARD_PRIVATE_REPOS_06 \
+    WAVE_JOB_GUARD_PR=1 \
+    BUILDKITE_PULL_REQUEST=206 \
+    "BUILDKITE_PIPELINE_DEFAULT_BRANCH=${DEFAULT_BRANCH-main}" \
+    "BUILDKITE_PULL_REQUEST_BASE_BRANCH=${BASE_BRANCH:-main}" \
+    "BUILDKITE_PULL_REQUEST_REPO=$PIPELINE_REPO" \
+    "BUILDKITE_REPO=$PIPELINE_REPO" \
+    bash "$PRDIR/.buildkite/scripts/guard-content-policy.sh" "$@"
+}
+
+# Built from fragments so this file never carries the literal path.
+_leak_line() {
+  printf '/%s/%s/x' home fixtureuser
 }
 
 @test "PR mode on a pull request passes without GUARD_PRIVATE_REPOS" {
   if ! command -v rg >/dev/null 2>&1; then
     skip "rg not installed"
   fi
-  _clean_tree
-  run env -u GUARD_PRIVATE_REPOS -u GUARD_PRIVATE_REPOS_01 -u GUARD_PRIVATE_REPOS_02 \
-    -u GUARD_PRIVATE_REPOS_03 -u GUARD_PRIVATE_REPOS_04 -u GUARD_PRIVATE_REPOS_05 \
-    -u GUARD_PRIVATE_REPOS_06 \
-    WAVE_JOB_GUARD_PR=1 \
-    BUILDKITE_PULL_REQUEST=206 \
-    "BUILDKITE_PULL_REQUEST_REPO=$PIPELINE_REPO" \
-    "BUILDKITE_REPO=$PIPELINE_REPO" \
-    bash "$TDIR/.buildkite/scripts/guard-content-policy.sh"
+  _pr_fixture
+  _run_pr_wrapper
   rm -rf "$TDIR"
   [ "$status" -eq 0 ]
   [[ "$output" == *"guard-content-policy: private-repo rule NOT checked (PR mode, no list)"* ]]
   [[ "$output" == *"public-repo-guard: private-repo rule NOT checked (PR mode, no list)"* ]]
   [[ "$output" == *"public-repo-guard: content policy OK"* ]]
+  [[ "$output" == *"bootstrap"* ]]
   [[ "$output" != *"failing closed"* ]]
   [[ "$output" != *"(private-repo)"* ]]
   # Not a clean pass: the verdict line itself says private names were not checked.
@@ -343,19 +386,135 @@ _clean_tree() {
   if ! command -v rg >/dev/null 2>&1; then
     skip "rg not installed"
   fi
-  _clean_tree
-  # Built from fragments so this file never carries the literal path.
-  printf '/%s/%s/x\n' home fixtureuser > "$TDIR/leak.txt"
-  run env -u GUARD_PRIVATE_REPOS -u GUARD_PRIVATE_REPOS_01 -u GUARD_PRIVATE_REPOS_02 \
-    -u GUARD_PRIVATE_REPOS_03 -u GUARD_PRIVATE_REPOS_04 -u GUARD_PRIVATE_REPOS_05 \
-    -u GUARD_PRIVATE_REPOS_06 -u BUILDKITE_PULL_REQUEST_REPO -u BUILDKITE_REPO \
-    WAVE_JOB_GUARD_PR=1 \
-    BUILDKITE_PULL_REQUEST=206 \
-    bash "$TDIR/.buildkite/scripts/guard-content-policy.sh"
+  _pr_fixture
+  _leak_line > "$PRDIR/leak.txt"
+  _run_pr_wrapper
   rm -rf "$TDIR"
   [ "$status" -eq 1 ]
   [[ "$output" == *"abs-user-path"* ]]
   [[ "$output" != *"content policy OK"* ]]
+}
+
+@test "PR mode re-execs the default branch's wrapper once it has the marker" {
+  if ! command -v rg >/dev/null 2>&1; then
+    skip "rg not installed"
+  fi
+  _pr_fixture trusted
+  _run_pr_wrapper
+  local out="$output" st="$status"
+  _leak_line > "$PRDIR/leak.txt"
+  _run_pr_wrapper
+  rm -rf "$TDIR"
+  [ "$st" -eq 0 ]
+  [[ "$out" == *"running the 'main' copy of this wrapper (trusted stage)"* ]]
+  [[ "$out" == *"MAIN-COPY-WRAPPER"* ]]
+  [[ "$out" != *"bootstrap"* ]]
+  [[ "${out##*$'\n'}" == *"private-repo rule NOT checked (PR mode, no list)"* ]]
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"MAIN-COPY-WRAPPER"* ]]
+  [[ "$output" == *"abs-user-path"* ]]
+}
+
+@test "PR mode ignores a no-op policy in the PR checkout" {
+  if ! command -v rg >/dev/null 2>&1; then
+    skip "rg not installed"
+  fi
+  _pr_fixture
+  printf '#!/usr/bin/env bash\nexit 0\n' > "$PRDIR/scripts/public-repo-guard/content-policy.sh"
+  _leak_line > "$PRDIR/leak.txt"
+  _run_pr_wrapper
+  rm -rf "$TDIR"
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"abs-user-path"* ]]
+}
+
+@test "PR mode takes .guardignore from the default branch, not the PR" {
+  if ! command -v rg >/dev/null 2>&1; then
+    skip "rg not installed"
+  fi
+  _pr_fixture
+  printf 'trusted-skip.txt\n' > "$ORIGIN/.guardignore"
+  _origin_commit guardignore
+  # The PR exempts its own leak file; the default branch's list does not.
+  printf 'leak.txt\n' > "$PRDIR/.guardignore"
+  _leak_line > "$PRDIR/leak.txt"
+  _run_pr_wrapper
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"leak.txt"* ]]
+  # A path the default branch exempts stays exempt.
+  rm -f "$PRDIR/leak.txt"
+  _leak_line > "$PRDIR/trusted-skip.txt"
+  _run_pr_wrapper
+  rm -rf "$TDIR"
+  [ "$status" -eq 0 ]
+}
+
+@test "PR mode ignores inline guard:allow markers from the PR" {
+  if ! command -v rg >/dev/null 2>&1; then
+    skip "rg not installed"
+  fi
+  _pr_fixture
+  printf '%s # guard:allow fixture reason\n' "$(_leak_line)" > "$PRDIR/leak.txt"
+  _run_pr_wrapper
+  rm -rf "$TDIR"
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"abs-user-path"* ]]
+  [[ "$output" == *"markers ignored in PR mode ("* ]]
+}
+
+@test "PR mode fails closed when the default branch has no policy" {
+  _pr_fixture
+  git -C "$ORIGIN" rm -q scripts/public-repo-guard/content-policy.sh
+  _origin_commit "drop policy"
+  _run_pr_wrapper
+  rm -rf "$TDIR"
+  [ "$status" -eq 2 ]
+  [[ "$output" == *"no fallback to the pull-request copy"* ]]
+  [[ "$output" != *"content policy OK"* ]]
+}
+
+@test "PR mode uses the pipeline default branch, never the PR base branch" {
+  if ! command -v rg >/dev/null 2>&1; then
+    skip "rg not installed"
+  fi
+  _pr_fixture
+  # The author-chosen base carries a no-op policy.
+  git -C "$ORIGIN" checkout -q -b author-base
+  printf '#!/usr/bin/env bash\nexit 0\n' > "$ORIGIN/scripts/public-repo-guard/content-policy.sh"
+  _origin_commit "no-op policy"
+  git -C "$ORIGIN" checkout -q main
+  _leak_line > "$PRDIR/leak.txt"
+  BASE_BRANCH=author-base _run_pr_wrapper
+  rm -rf "$TDIR"
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"abs-user-path"* ]]
+}
+
+@test "PR mode fails closed without a usable default branch" {
+  _pr_fixture
+  local name
+  for name in "" "bad..name" "no-such-branch"; do
+    DEFAULT_BRANCH="$name" _run_pr_wrapper
+    [ "$status" -eq 2 ]
+    [[ "$output" == *"failing closed"* ]]
+    [[ "$output" != *"content policy OK"* ]]
+  done
+  rm -rf "$TDIR"
+}
+
+@test "--trusted-stage outside PR mode or outside its temp dir fails closed" {
+  _pr_fixture
+  run env -u GUARD_PRIVATE_REPOS -u BUILDKITE_PULL_REQUEST_REPO -u BUILDKITE_REPO \
+    bash "$PRDIR/.buildkite/scripts/guard-content-policy.sh" --trusted-stage
+  [ "$status" -eq 2 ]
+  [[ "$output" == *"only valid in PR mode"* ]]
+  # From the checkout (not a guard-content-policy.* temp dir) it must refuse and
+  # must not remove anything.
+  _run_pr_wrapper --trusted-stage
+  [ "$status" -eq 2 ]
+  [[ "$output" == *"must run from its guard-content-policy.* temp dir"* ]]
+  [ -f "$PRDIR/.buildkite/scripts/guard-content-policy.sh" ]
+  rm -rf "$TDIR"
 }
 
 @test "WAVE_JOB_GUARD_PR values other than 1 fail closed in the wrapper" {
@@ -757,4 +916,25 @@ _clean_tree() {
   [[ "$output" == *"content policy OK"* ]]
   [[ "$output" != *"private-repo rule NOT checked (PR mode, no list)"* ]]
   [[ "$output" != *"failing closed"* ]]
+}
+
+@test "content-policy PR mode ignores inline guard:allow markers" {
+  if ! command -v rg >/dev/null 2>&1; then
+    skip "rg not installed"
+  fi
+  TDIR="$(mktemp -d)"
+  printf '%s # guard:allow fixture reason\n' "$(_leak_line)" > "$TDIR/leak.txt"
+  run env -u GUARD_PRIVATE_REPOS -u GUARD_PRIVATE_REPOS_01 -u GUARD_PRIVATE_REPOS_02 \
+    -u GUARD_PRIVATE_REPOS_03 -u GUARD_PRIVATE_REPOS_04 -u GUARD_PRIVATE_REPOS_05 \
+    -u GUARD_PRIVATE_REPOS_06 \
+    WAVE_JOB_GUARD_PR=1 \
+    BUILDKITE_PULL_REQUEST=206 \
+    bash "$POLICY" "$TDIR"
+  local pr_status="$status"
+  run env -u GUARD_PRIVATE_REPOS -u WAVE_JOB_GUARD_PR BUILDKITE_PULL_REQUEST=false \
+    bash "$POLICY" "$TDIR"
+  rm -rf "$TDIR"
+  [ "$pr_status" -eq 1 ]
+  # Outside PR mode the documented marker still applies.
+  [ "$status" -eq 0 ]
 }
