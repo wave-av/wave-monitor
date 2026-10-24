@@ -134,7 +134,8 @@ _neuter_plant_poison() {
   _commit_main_strict
   _neuter_plant_poison
   WORK="$(mktemp -d)"
-  run --separate-stderr env BUILDKITE_PULL_REQUEST=11 \
+  # -u: a real PR build exports the base branch; this test must not inherit it.
+  run --separate-stderr env -u BUILDKITE_PULL_REQUEST_BASE_BRANCH BUILDKITE_PULL_REQUEST=11 \
     bash -c "source \"$SCRIPT\" && WORK=\"$WORK\" && resolve_config"
   [ "$status" -eq 2 ]
 }
