@@ -1044,3 +1044,48 @@ _ignore_case() {
   [[ "$output" == *"b.md"* ]]
   [[ "$output" == *"c.md"* ]]
 }
+
+@test "PR mode: a leak in a file with a NUL byte is caught (MF-W4)" {
+  if ! command -v rg >/dev/null 2>&1; then
+    skip "rg not installed"
+  fi
+  _pr_fixture
+  { _leak_line; printf '\n\000binary-tail\n'; } > "$PRDIR/blob.dat"
+  _run_pr_wrapper
+  rm -rf "$TDIR"
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"abs-user-path"* ]]
+  [[ "$output" == *"blob.dat"* ]]
+}
+
+# _rgconfig_case <glob|ignore-file> : a RIPGREP_CONFIG_PATH config must not
+# hide a PR guard:allow marker from the neutralizing scan (MF-W1b). origin
+# main gets a policy that still honours markers in PR mode (like main before
+# M1, the bootstrap state), so the wrapper's neutralizing is what must work.
+_rgconfig_case() {
+  _pr_fixture
+  sed 's/^  if \[\[ "\$_guard_pr_mode" == "1" \]\]; then$/  if false; then/' "$POLICY" \
+    > "$ORIGIN/scripts/public-repo-guard/content-policy.sh"
+  grep -q '^  if false; then$' "$ORIGIN/scripts/public-repo-guard/content-policy.sh"
+  _origin_commit marker-honouring-policy
+  printf 'marked.txt\n' > "$TDIR/hide.ignore"
+  if [ "$1" = "glob" ]; then
+    printf -- '--glob=!marked.txt\n' > "$TDIR/ripgreprc"
+  else
+    printf -- '--ignore-file=%s\n' "$TDIR/hide.ignore" > "$TDIR/ripgreprc"
+  fi
+  printf '%s # guard:allow fixture reason\n' "$(_leak_line)" > "$PRDIR/marked.txt"
+  RIPGREP_CONFIG_PATH="$TDIR/ripgreprc" _run_pr_wrapper
+  rm -rf "$TDIR"
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"abs-user-path"* ]]
+  [[ "$output" == *"marked.txt"* ]]
+}
+
+@test "PR mode: RIPGREP_CONFIG_PATH cannot hide a guard:allow marker (MF-W1b)" {
+  if ! command -v rg >/dev/null 2>&1; then
+    skip "rg not installed"
+  fi
+  _rgconfig_case glob
+  _rgconfig_case ignore-file
+}
