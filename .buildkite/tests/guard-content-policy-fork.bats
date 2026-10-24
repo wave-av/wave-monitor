@@ -14,7 +14,9 @@
 # (no repo deps; needs bash + git checkout; rg optional — see below)
 #
 # PR mode (WAVE_JOB_GUARD_PR=1) is covered at the bottom: a pull-request
-# number with no private-repo list skips only private-repo; the flag
+# number with no private-repo list skips only private-repo, and the output
+# says that rule was NOT checked (never a plain clean pass); any other
+# non-empty flag value exits 2; the flag
 # together with any list variable exits 2; the flag on a non-pull-request
 # build fails closed; a missing list with the flag unset still fails closed.
 
@@ -300,10 +302,23 @@ setup() {
 # PR mode. The hitting name is a token already in this tree, so a run that
 # still applies private-repo exits 1. The sentinel is not in the tree and
 # must never be printed.
+# The wrapper cds to its own repo root, so PR-mode positive tests run a copy
+# of the wrapper and policy inside a clean temp tree. A full-repo scan is
+# environment-dependent (a linked worktree's .git pointer file trips
+# abs-user-path), so no PR-mode test asserts exit 0 on this checkout.
+_clean_tree() {
+  TDIR="$(mktemp -d)"
+  mkdir -p "$TDIR/.buildkite/scripts" "$TDIR/scripts/public-repo-guard"
+  cp "$SCRIPT" "$TDIR/.buildkite/scripts/guard-content-policy.sh"
+  cp "$POLICY" "$TDIR/scripts/public-repo-guard/content-policy.sh"
+  printf 'clean\n' > "$TDIR/ok.txt"
+}
+
 @test "PR mode on a pull request passes without GUARD_PRIVATE_REPOS" {
   if ! command -v rg >/dev/null 2>&1; then
     skip "rg not installed"
   fi
+  _clean_tree
   run env -u GUARD_PRIVATE_REPOS -u GUARD_PRIVATE_REPOS_01 -u GUARD_PRIVATE_REPOS_02 \
     -u GUARD_PRIVATE_REPOS_03 -u GUARD_PRIVATE_REPOS_04 -u GUARD_PRIVATE_REPOS_05 \
     -u GUARD_PRIVATE_REPOS_06 \
@@ -311,13 +326,83 @@ setup() {
     BUILDKITE_PULL_REQUEST=206 \
     "BUILDKITE_PULL_REQUEST_REPO=$PIPELINE_REPO" \
     "BUILDKITE_REPO=$PIPELINE_REPO" \
-    "$SCRIPT"
+    bash "$TDIR/.buildkite/scripts/guard-content-policy.sh"
+  rm -rf "$TDIR"
   [ "$status" -eq 0 ]
-  [[ "$output" == *"guard-content-policy: private-repo rule skipped for PR mode"* ]]
-  [[ "$output" == *"public-repo-guard: private-repo rule skipped for PR mode"* ]]
+  [[ "$output" == *"guard-content-policy: private-repo rule NOT checked (PR mode, no list)"* ]]
+  [[ "$output" == *"public-repo-guard: private-repo rule NOT checked (PR mode, no list)"* ]]
   [[ "$output" == *"public-repo-guard: content policy OK"* ]]
   [[ "$output" != *"failing closed"* ]]
   [[ "$output" != *"(private-repo)"* ]]
+  # Not a clean pass: the verdict line itself says private names were not checked.
+  [[ "${lines[${#lines[@]}-1]}" == *"private-repo rule NOT checked (PR mode, no list)"* ]]
+  [[ "${lines[${#lines[@]}-1]}" != "public-repo-guard: content policy OK" ]]
+}
+
+@test "PR mode still fails a violation in the PR tree" {
+  if ! command -v rg >/dev/null 2>&1; then
+    skip "rg not installed"
+  fi
+  _clean_tree
+  # Built from fragments so this file never carries the literal path.
+  printf '/%s/%s/x\n' home fixtureuser > "$TDIR/leak.txt"
+  run env -u GUARD_PRIVATE_REPOS -u GUARD_PRIVATE_REPOS_01 -u GUARD_PRIVATE_REPOS_02 \
+    -u GUARD_PRIVATE_REPOS_03 -u GUARD_PRIVATE_REPOS_04 -u GUARD_PRIVATE_REPOS_05 \
+    -u GUARD_PRIVATE_REPOS_06 -u BUILDKITE_PULL_REQUEST_REPO -u BUILDKITE_REPO \
+    WAVE_JOB_GUARD_PR=1 \
+    BUILDKITE_PULL_REQUEST=206 \
+    bash "$TDIR/.buildkite/scripts/guard-content-policy.sh"
+  rm -rf "$TDIR"
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"abs-user-path"* ]]
+  [[ "$output" != *"content policy OK"* ]]
+}
+
+@test "WAVE_JOB_GUARD_PR values other than 1 fail closed in the wrapper" {
+  local val
+  for val in 0 true yes 01 " 1" "1 " false; do
+    run env -u GUARD_PRIVATE_REPOS -u GUARD_PRIVATE_REPOS_01 -u GUARD_PRIVATE_REPOS_02 \
+      -u GUARD_PRIVATE_REPOS_03 -u GUARD_PRIVATE_REPOS_04 -u GUARD_PRIVATE_REPOS_05 \
+      -u GUARD_PRIVATE_REPOS_06 -u BUILDKITE_PULL_REQUEST_REPO -u BUILDKITE_REPO \
+      "WAVE_JOB_GUARD_PR=$val" \
+      BUILDKITE_PULL_REQUEST=206 \
+      "$SCRIPT"
+    [ "$status" -eq 2 ]
+    [[ "$output" == *"must be unset, empty, or 1"* ]]
+    [[ "$output" != *"NOT checked"* ]]
+    [[ "$output" != *"content policy OK"* ]]
+  done
+}
+
+@test "content-policy rejects WAVE_JOB_GUARD_PR values other than 1" {
+  local val
+  for val in 0 true yes 01 " 1" "1 " false; do
+    TDIR="$(mktemp -d)"
+    run env -u GUARD_PRIVATE_REPOS -u GUARD_PRIVATE_REPOS_01 -u GUARD_PRIVATE_REPOS_02 \
+      -u GUARD_PRIVATE_REPOS_03 -u GUARD_PRIVATE_REPOS_04 -u GUARD_PRIVATE_REPOS_05 \
+      -u GUARD_PRIVATE_REPOS_06 \
+      "WAVE_JOB_GUARD_PR=$val" \
+      BUILDKITE_PULL_REQUEST=false \
+      bash "$POLICY" "$TDIR"
+    rm -rf "$TDIR"
+    [ "$status" -eq 2 ]
+    [[ "$output" == *"must be unset, empty, or 1"* ]]
+    [[ "$output" != *"NOT checked"* ]]
+    [[ "$output" != *"content policy OK"* ]]
+  done
+}
+
+@test "content-policy treats an empty WAVE_JOB_GUARD_PR as unset" {
+  if ! command -v rg >/dev/null 2>&1; then
+    skip "rg not installed"
+  fi
+  TDIR="$(mktemp -d)"
+  run env -u GUARD_PRIVATE_REPOS WAVE_JOB_GUARD_PR= BUILDKITE_PULL_REQUEST=false \
+    bash "$POLICY" "$TDIR"
+  rm -rf "$TDIR"
+  [ "$status" -eq 0 ]
+  [[ "${lines[${#lines[@]}-1]}" == "public-repo-guard: content policy OK" ]]
+  [[ "$output" != *"NOT checked"* ]]
 }
 
 @test "PR mode with the private-repo list fails closed and does not print it" {
@@ -336,7 +421,7 @@ setup() {
   [[ "$output" == *"spoofed"* ]]
   [[ "$output" == *"failing closed"* ]]
   [[ "$output" == *"must not be skipped"* ]]
-  [[ "$output" != *"private-repo rule skipped"* ]]
+  [[ "$output" != *"private-repo rule NOT checked"* ]]
   [[ "$output" != *"content policy OK"* ]]
   [[ "$output" != *"(private-repo)"* ]]
   [[ "$output" != *"$HITTING_NAME"* ]]
@@ -356,7 +441,7 @@ setup() {
   [ "$status" -eq 2 ]
   [[ "$output" == *"spoofed"* ]]
   [[ "$output" == *"must not be skipped"* ]]
-  [[ "$output" != *"private-repo rule skipped"* ]]
+  [[ "$output" != *"private-repo rule NOT checked"* ]]
   [[ "$output" != *"content policy OK"* ]]
   [[ "$output" != *"$LIST_SENTINEL"* ]]
 }
@@ -376,7 +461,7 @@ setup() {
     [ "$status" -eq 2 ]
     [[ "$output" == *"spoofed"* ]]
     [[ "$output" != *"explicitly empty"* ]]
-    [[ "$output" != *"private-repo rule skipped"* ]]
+    [[ "$output" != *"private-repo rule NOT checked"* ]]
     [[ "$output" != *"content policy OK"* ]]
   done
 }
@@ -394,7 +479,7 @@ setup() {
   [[ "$output" == *"failing closed"* ]]
   [[ "$output" == *"must not be skipped"* ]]
   [[ "$output" != *"not a pull-request number"* ]]
-  [[ "$output" != *"private-repo rule skipped"* ]]
+  [[ "$output" != *"private-repo rule NOT checked"* ]]
   [[ "$output" != *"content policy OK"* ]]
   [[ "$output" != *"(private-repo)"* ]]
   [[ "$output" != *"$HITTING_NAME"* ]]
@@ -411,7 +496,7 @@ setup() {
   [[ "$output" == *"not a pull-request number"* ]]
   [[ "$output" == *"must not be skipped"* ]]
   [[ "$output" != *"spoofed"* ]]
-  [[ "$output" != *"private-repo rule skipped"* ]]
+  [[ "$output" != *"private-repo rule NOT checked"* ]]
   [[ "$output" != *"content policy OK"* ]]
 }
 
@@ -425,7 +510,7 @@ setup() {
   [ "$status" -eq 2 ]
   [[ "$output" == *"not a pull-request number"* ]]
   [[ "$output" != *"missing GUARD_PRIVATE_REPOS"* ]]
-  [[ "$output" != *"private-repo rule skipped"* ]]
+  [[ "$output" != *"private-repo rule NOT checked"* ]]
   [[ "$output" != *"content policy OK"* ]]
 }
 
@@ -441,7 +526,7 @@ setup() {
     [ "$status" -eq 2 ]
     [[ "$output" == *"not a pull-request number"* ]]
     [[ "$output" != *"spoofed"* ]]
-    [[ "$output" != *"private-repo rule skipped"* ]]
+    [[ "$output" != *"private-repo rule NOT checked"* ]]
   done
 }
 
@@ -457,7 +542,7 @@ setup() {
       "$SCRIPT"
     [ "$status" -eq 2 ]
     [[ "$output" == *"not a pull-request number"* ]]
-    [[ "$output" != *"private-repo rule skipped"* ]]
+    [[ "$output" != *"private-repo rule NOT checked"* ]]
     [[ "$output" != *"content policy OK"* ]]
   done
 }
@@ -471,7 +556,7 @@ setup() {
     "$SCRIPT"
   [ "$status" -eq 2 ]
   [[ "$output" == *"missing GUARD_PRIVATE_REPOS_01"* ]]
-  [[ "$output" != *"private-repo rule skipped"* ]]
+  [[ "$output" != *"private-repo rule NOT checked"* ]]
   [[ "$output" != *"not a pull-request number"* ]]
 }
 
@@ -488,7 +573,7 @@ setup() {
   [ "$status" -eq 1 ]
   [[ "$output" == *"(private-repo)"* ]]
   [[ "$output" == *"blocking content-policy violation"* ]]
-  [[ "$output" != *"private-repo rule skipped"* ]]
+  [[ "$output" != *"private-repo rule NOT checked"* ]]
   [[ "$output" != *"$HITTING_NAME"* ]]
 }
 
@@ -503,7 +588,7 @@ setup() {
     "$SCRIPT"
   [ "$status" -eq 2 ]
   [[ "$output" == *"refusing to run"* ]]
-  [[ "$output" != *"private-repo rule skipped"* ]]
+  [[ "$output" != *"private-repo rule NOT checked"* ]]
   [[ "$output" != *"$HITTING_NAME"* ]]
 }
 
@@ -520,9 +605,10 @@ setup() {
     bash "$POLICY" "$TDIR"
   rm -rf "$TDIR"
   [ "$status" -eq 0 ]
-  [[ "$output" == *"public-repo-guard: private-repo rule skipped for PR mode"* ]]
+  [[ "$output" == *"public-repo-guard: private-repo rule NOT checked (PR mode, no list)"* ]]
   [[ "$output" == *"content policy OK"* ]]
   [[ "$output" != *"guard-content-policy:"* ]]
+  [[ "${lines[${#lines[@]}-1]}" == *"private-repo rule NOT checked (PR mode, no list)"* ]]
   [[ "$output" != *"(private-repo)"* ]]
 }
 
@@ -542,7 +628,7 @@ setup() {
   [[ "$output" == *"private-repo list"* ]]
   [[ "$output" == *"spoofed"* ]]
   [[ "$output" == *"must not be skipped"* ]]
-  [[ "$output" != *"private-repo rule skipped"* ]]
+  [[ "$output" != *"private-repo rule NOT checked"* ]]
   [[ "$output" != *"content policy OK"* ]]
   [[ "$output" != *"(private-repo)"* ]]
   [[ "$output" != *"guard-content-policy:"* ]]
@@ -562,7 +648,7 @@ setup() {
   rm -rf "$TDIR"
   [ "$status" -eq 2 ]
   [[ "$output" == *"spoofed"* ]]
-  [[ "$output" != *"private-repo rule skipped"* ]]
+  [[ "$output" != *"private-repo rule NOT checked"* ]]
   [[ "$output" != *"content policy OK"* ]]
   [[ "$output" != *"$LIST_SENTINEL"* ]]
 }
@@ -580,7 +666,7 @@ setup() {
   [ "$status" -eq 2 ]
   [[ "$output" == *"spoofed"* ]]
   [[ "$output" != *"zero repo names"* ]]
-  [[ "$output" != *"private-repo rule skipped"* ]]
+  [[ "$output" != *"private-repo rule NOT checked"* ]]
   [[ "$output" != *"content policy OK"* ]]
 }
 
@@ -599,7 +685,7 @@ setup() {
   [[ "$output" == *"spoofed"* ]]
   [[ "$output" == *"must not be skipped"* ]]
   [[ "$output" != *"not a pull-request number"* ]]
-  [[ "$output" != *"private-repo rule skipped"* ]]
+  [[ "$output" != *"private-repo rule NOT checked"* ]]
   [[ "$output" != *"content policy OK"* ]]
   [[ "$output" != *"(private-repo)"* ]]
   [[ "$output" != *"$HITTING_NAME"* ]]
@@ -619,7 +705,7 @@ setup() {
   [[ "$output" == *"not a pull-request number"* ]]
   [[ "$output" == *"must not be skipped"* ]]
   [[ "$output" != *"spoofed"* ]]
-  [[ "$output" != *"private-repo rule skipped"* ]]
+  [[ "$output" != *"private-repo rule NOT checked"* ]]
   [[ "$output" != *"content policy OK"* ]]
   [[ "$output" != *"(private-repo)"* ]]
 }
@@ -638,7 +724,7 @@ setup() {
     rm -rf "$TDIR"
     [ "$status" -eq 2 ]
     [[ "$output" == *"not a pull-request number"* ]]
-    [[ "$output" != *"private-repo rule skipped"* ]]
+    [[ "$output" != *"private-repo rule NOT checked"* ]]
     [[ "$output" != *"content policy OK"* ]]
   done
 }
@@ -655,7 +741,7 @@ setup() {
   [ "$status" -eq 2 ]
   [[ "$output" == *"not a pull-request number"* ]]
   [[ "$output" != *"content policy OK"* ]]
-  [[ "$output" != *"private-repo rule skipped"* ]]
+  [[ "$output" != *"private-repo rule NOT checked"* ]]
 }
 
 @test "content-policy without the flag still skips an unset list" {
@@ -669,6 +755,6 @@ setup() {
   rm -rf "$TDIR"
   [ "$status" -eq 0 ]
   [[ "$output" == *"content policy OK"* ]]
-  [[ "$output" != *"private-repo rule skipped for PR mode"* ]]
+  [[ "$output" != *"private-repo rule NOT checked (PR mode, no list)"* ]]
   [[ "$output" != *"failing closed"* ]]
 }
