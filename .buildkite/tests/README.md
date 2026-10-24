@@ -15,5 +15,6 @@ Run from the repo root, no repo dependencies:
 
 Both exit non-zero on failure. They are not wired into `ci.sh`: the FPC
 agent image is not known to carry bats/pyyaml, and breaking `node-gates`
-on missing test tooling would be worse than no gate. Wiring belongs to
-WAVE-26516 (L1 fail-closed lint).
+on missing test tooling would be worse than no gate. Pull requests that
+change `.buildkite/` upload `pipeline-pr-self-check.yml` instead, which
+runs `bats .buildkite/tests/*.bats` and shellcheck on `.buildkite/scripts`.

@@ -1,0 +1,19 @@
+# Pull requests that change .buildkite/ upload this file instead of
+# pipeline.yml. Those builds do not receive WAVE_REGISTRY_READ_TOKEN.
+# One checked-in script, fpc-isolated, no secrets and no private registry.
+steps:
+  - label: ":bat: bats + shellcheck"
+    key: bk-self-check
+    command: .buildkite/scripts/bk-self-check.sh
+    agents: # guard:allow BK pipeline keyword, not a repo reference
+      queue: fpc-isolated
+    timeout_in_minutes: 15
+    retry:
+      automatic:
+        - exit_status: -1
+          limit: 1
+        - signal_reason: agent_stop
+          limit: 1
+      manual:
+        allowed: true
+        permit_on_passed: false

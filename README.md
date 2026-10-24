@@ -81,6 +81,10 @@ for the nine release gates (`npm run release-check` runs 1–5).
 foundation checks, governance A_BLOCK, gitleaks + content-policy guards).
 Every step's `command` is exactly one checked-in repo script path — the
 fpc-isolated agents run with `--no-command-eval`, so never inline commands. <!-- # guard:allow BK pipeline keyword, not a repo reference -->
+Pull requests that change `.buildkite/` do not receive `WAVE_REGISTRY_READ_TOKEN`.
+`.buildkite/upload.sh` uploads `.buildkite/pipeline-pr-self-check.yml` for
+those builds: bats and shellcheck on `fpc-isolated`, with no secret. Other
+builds still upload `pipeline.yml`.
 
 Host-side setup (not expressible in `pipeline.yml` — this section is the
 pointer target):
