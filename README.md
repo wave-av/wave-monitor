@@ -136,7 +136,10 @@ pointer target):
   `scripts/public-repo-guard/content-policy.sh` and `.guardignore` against a
   copy of the pull-request tree (data only, `.git` excluded). Inline
   `# guard:allow` markers are ignored in PR mode, since they are pull-request
-  content. A missing or invalid default branch, a failed fetch, or a default
+  content, and the copy's `.ignore`, `.rgignore` and `.gitignore` files are
+  deleted (MF-W1); the policy also scans with `rg --no-ignore`, so the
+  built-in excludes plus the default branch's `.guardignore` are the only
+  exclusion source. A missing or invalid default branch, a failed fetch, or a default
   branch without the policy exits 2; nothing falls back to the pull
   request's copy. Once the default branch's wrapper carries the line
   `# guard-content-policy trusted-pr-runner: v1`, the pull request's wrapper
