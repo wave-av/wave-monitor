@@ -33,10 +33,42 @@
 # PR mode is not a private-name clearance: its log says the private-repo
 # rule was NOT checked (WAVE-27678 follow-up M3).
 #
+# Trusted policy in PR mode (WAVE-28333 M1): the policy never runs from the
+# pull-request checkout. This script fetches refs/heads/$BUILDKITE_PIPELINE_DEFAULT_BRANCH
+# (never BUILDKITE_PULL_REQUEST_BASE_BRANCH, which the PR author picks) and
+# runs that branch's scripts/public-repo-guard/content-policy.sh and
+# .guardignore against a copy of the pull-request tree, which is data only.
+# Inline `# guard:allow` markers are ignored in PR mode: they are
+# pull-request content and must not exempt pull-request lines. When the
+# default branch's copy of THIS wrapper carries the trusted-runner marker
+# below, the PR copy re-execs that copy (`--trusted-stage`) and does nothing
+# else itself. A missing default branch, fetch failure, or missing policy on
+# the default branch exits 2; there is no fallback to the PR copy of the
+# policy. Bootstrap: until the default branch's wrapper has the marker, the
+# PR copy of this wrapper runs the steps above itself (still with the
+# default-branch policy and .guardignore). The entry script of any
+# Buildkite step is checkout code (no-command-eval), so a pull request that
+# edits .buildkite/ can still change this wrapper or drop the step; closing
+# that needs a host-side anchor (README "Buildkite runbook").
+#
 # GHA apt-installs ripgrep when missing; FPC guests must not assume sudo/apt,
 # so a missing rg fails closed with a clear message instead.
 set -euo pipefail
-cd "$(dirname "$0")/../.."
+
+# The default branch's copy of this file is re-executed in PR mode only
+# when it carries this exact line (see header):
+# guard-content-policy trusted-pr-runner: v1
+_GUARD_TRUSTED_MARKER='# guard-content-policy trusted-pr-runner: v1'
+
+# Stage 2 is the default-branch copy, exec'd from a temp dir with the
+# pull-request checkout as the working directory, so it must not re-cd.
+_guard_stage=1
+if [ "${1:-}" = "--trusted-stage" ]; then
+  _guard_stage=2
+  shift
+else
+  cd "$(dirname "$0")/../.."
+fi
 
 _norm_repo() {
   # host/owner/name lowercase, no scheme/user/suffix (review findings: a raw
@@ -80,6 +112,80 @@ _guard_private_list_present() {
   return 1
 }
 
+_guard_fail() {
+  echo "guard-content-policy: $1 — failing closed."
+  exit 2
+}
+
+# PR mode: fetch the default branch, then either re-exec its copy of this
+# wrapper (stage 1, marker present) or scan a copy of the checkout with its
+# policy and .guardignore. Always exits.
+_guard_run_trusted_pr() {
+  local default ref rc
+  default="${BUILDKITE_PIPELINE_DEFAULT_BRANCH:-}"
+  if [ -z "$default" ] || ! git check-ref-format --branch "$default" >/dev/null 2>&1; then
+    _guard_fail "PR mode needs BUILDKITE_PIPELINE_DEFAULT_BRANCH (a valid branch name) to load the trusted policy"
+  fi
+  if [ "$_guard_stage" = "2" ]; then
+    _guard_work="$(cd "$(dirname "$0")" && pwd)"
+    case "$(basename "$_guard_work")" in
+      guard-content-policy.*) ;;
+      *) _guard_fail "--trusted-stage must run from its guard-content-policy.* temp dir" ;;
+    esac
+  else
+    _guard_work="$(mktemp -d "${TMPDIR:-/tmp}/guard-content-policy.XXXXXXXX")"
+  fi
+  trap 'rm -rf "$_guard_work"' EXIT
+  ref="refs/guard-content-policy/trusted"
+  git -c core.hooksPath=/dev/null fetch --quiet --no-tags origin "+refs/heads/$default:$ref" \
+    || _guard_fail "cannot fetch default branch '$default'"
+  git cat-file -e "$ref:scripts/public-repo-guard/content-policy.sh" 2>/dev/null \
+    || _guard_fail "default branch '$default' has no scripts/public-repo-guard/content-policy.sh (no fallback to the pull-request copy)"
+  if [ "$_guard_stage" = "1" ] \
+    && git show "$ref:.buildkite/scripts/guard-content-policy.sh" 2>/dev/null | grep -qxF "$_GUARD_TRUSTED_MARKER"; then
+    git show "$ref:.buildkite/scripts/guard-content-policy.sh" > "$_guard_work/guard-content-policy.sh" \
+      || _guard_fail "cannot extract the default-branch wrapper"
+    trap - EXIT # stage 2 owns and removes the temp dir
+    echo "guard-content-policy: running the '$default' copy of this wrapper (trusted stage)."
+    exec bash "$_guard_work/guard-content-policy.sh" --trusted-stage
+  fi
+  if [ "$_guard_stage" = "1" ]; then
+    echo "guard-content-policy: bootstrap — the '$default' copy of this wrapper has no trusted PR runner yet; this checkout's wrapper runs the '$default' policy and .guardignore."
+  fi
+  git show "$ref:scripts/public-repo-guard/content-policy.sh" > "$_guard_work/content-policy.sh" \
+    || _guard_fail "cannot extract the default-branch policy"
+  mkdir "$_guard_work/tree"
+  tar -C . --exclude=./.git -cf - . | tar -C "$_guard_work/tree" -xf - \
+    || _guard_fail "cannot copy the pull-request tree"
+  # .guardignore comes from the default branch, never from the pull request.
+  rm -rf "$_guard_work/tree/.guardignore"
+  if git cat-file -e "$ref:.guardignore" 2>/dev/null; then
+    git show "$ref:.guardignore" > "$_guard_work/tree/.guardignore" \
+      || _guard_fail "cannot extract the default-branch .guardignore"
+  fi
+  # Inline markers are pull-request content: neutralize every one in the copy.
+  rc=0
+  (cd "$_guard_work/tree" && rg -l0 --hidden --no-ignore-vcs -F 'guard:allow' .) \
+    > "$_guard_work/markers.lst" || rc=$?
+  if [ "$rc" -ge 2 ]; then
+    _guard_fail "ripgrep failed (exit $rc) listing guard:allow markers"
+  fi
+  local _f _n=0
+  while IFS= read -r -d '' _f; do
+    sed 's/guard:allow/guard-allow-ignored-in-pr-mode/g' "$_guard_work/tree/$_f" > "$_guard_work/marker.tmp" \
+      || _guard_fail "cannot neutralize markers in $_f"
+    cat "$_guard_work/marker.tmp" > "$_guard_work/tree/$_f"
+    _n=$((_n + 1))
+  done < "$_guard_work/markers.lst"
+  echo "guard-content-policy: '# guard:allow' markers ignored in PR mode ($_n file(s)); policy and .guardignore from '$default'."
+  rc=0
+  (cd "$_guard_work/tree" && bash "$_guard_work/content-policy.sh" .) || rc=$?
+  if [ "$rc" -eq 0 ]; then
+    echo "guard-content-policy: content policy OK for the rules that ran ('$default' policy); private-repo rule NOT checked (PR mode, no list)"
+  fi
+  exit "$rc"
+}
+
 if [ -n "${BUILDKITE_PULL_REQUEST_REPO:-}" ]; then
   _head="$(_norm_repo "$BUILDKITE_PULL_REQUEST_REPO")"
   _pipe="$(_norm_repo "${BUILDKITE_REPO:-}")"
@@ -116,15 +222,15 @@ command -v rg >/dev/null 2>&1 || {
   echo "ripgrep (rg) is required but not installed in the agent image — failing closed."
   exit 2
 }
+if [ "$_guard_stage" = "2" ] && [ "${WAVE_JOB_GUARD_PR:-}" != "1" ]; then
+  echo "--trusted-stage is only valid in PR mode (WAVE_JOB_GUARD_PR=1) — failing closed."
+  exit 2
+fi
 if [ "${WAVE_JOB_GUARD_PR:-}" = "1" ]; then
   echo "guard-content-policy: private-repo rule NOT checked (PR mode, no list) — private names were not scanned; remaining content-policy rules still run."
   # The list names are absent; a present name already exited above.
-  # content-policy.sh lives outside .buildkite/ and can be edited on a pull
-  # request, so this path runs only when the confidential list is not in
-  # the environment. The non-secret flag and BUILDKITE_PULL_REQUEST are
-  # passed through unchanged.
   export WAVE_JOB_GUARD_PR
-  exec bash scripts/public-repo-guard/content-policy.sh .
+  _guard_run_trusted_pr
 fi
 if [ -n "${GUARD_PRIVATE_REPOS+x}" ]; then
   # Set (even to empty): must be non-degenerate, takes precedence. An
