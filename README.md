@@ -118,7 +118,10 @@ pointer target):
     was overridden and the private-repo rule must not be skipped. The same flag
     when `BUILDKITE_PULL_REQUEST` is empty, `false`, or not a number fails
     closed (exit 2), so a default-branch build cannot drop the rule. With the
-    flag unset, a missing list still fails closed.
+    flag unset, a missing list still fails closed. Any other non-empty flag
+    value exits 2. PR mode is not a private-name clearance: both scripts log
+    `private-repo rule NOT checked (PR mode, no list)`, including on the
+    final verdict line.
 - **Fork trust.** The secrets-queue steps consume host credentials, so the
   host must (a) run them from the **trusted base ref** as a base-branch build
   — re-running the fork build itself keeps fork metadata
