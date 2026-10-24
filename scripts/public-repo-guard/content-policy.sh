@@ -19,11 +19,49 @@ ROOT="${1:-.}"
 cd "$ROOT" || { echo "::error::content-policy: cannot cd to $ROOT"; exit 2; }
 
 # WAVE_JOB_GUARD_PR=1 is the non-secret pull-request signal. Honor it only
-# when BUILDKITE_PULL_REQUEST is a positive integer. Empty, "false", and any
-# other value fail closed before rules run, so a default-branch build cannot
+# when BUILDKITE_PULL_REQUEST is a positive integer and the private-repo
+# list is unset (GUARD_PRIVATE_REPOS and GUARD_PRIVATE_REPOS_01.._06).
+# The flag together with any of those names — set, even to empty — fails
+# closed before rules run. The names are not cleared. Empty, "false", and
+# any other non-number also fail closed, so a default-branch build cannot
 # skip private-repo. With the flag unset, an unset list still skips the rule
 # (local and direct runs); a set list still runs it.
-if [[ "${WAVE_JOB_GUARD_PR:-}" == "1" ]] && [[ ! "${BUILDKITE_PULL_REQUEST:-}" =~ ^[1-9][0-9]*$ ]]; then
+
+# LC_ALL=C so [0-9] is ASCII: in a UTF-8 locale the bracket expression also
+# matches other decimal digits, which must not select pull-request mode.
+_guard_is_pr_number() {
+  (
+    LC_ALL=C
+    [[ "${BUILDKITE_PULL_REQUEST:-}" =~ ^[1-9][0-9]*$ ]]
+  )
+}
+
+# True when any private-repo list name is set, including empty. Same names
+# the Buildkite wrapper refuses to carry into pull-request mode. The value
+# is never printed.
+_guard_private_list_present() {
+  local _name
+  for _name in \
+    GUARD_PRIVATE_REPOS \
+    GUARD_PRIVATE_REPOS_01 \
+    GUARD_PRIVATE_REPOS_02 \
+    GUARD_PRIVATE_REPOS_03 \
+    GUARD_PRIVATE_REPOS_04 \
+    GUARD_PRIVATE_REPOS_05 \
+    GUARD_PRIVATE_REPOS_06
+  do
+    if [[ -v "$_name" ]]; then
+      return 0
+    fi
+  done
+  return 1
+}
+
+if [[ "${WAVE_JOB_GUARD_PR:-}" == "1" ]] && _guard_private_list_present; then
+  echo "::error title=public-repo-guard (pr-mode)::WAVE_JOB_GUARD_PR=1 is set together with the private-repo list — failing closed (this environment looks spoofed; a pull-request build must not carry GUARD_PRIVATE_REPOS or GUARD_PRIVATE_REPOS_01.._06, and the private-repo rule must not be skipped)."
+  exit 2
+fi
+if [[ "${WAVE_JOB_GUARD_PR:-}" == "1" ]] && ! _guard_is_pr_number; then
   echo "::error title=public-repo-guard (pr-mode)::WAVE_JOB_GUARD_PR=1 is set but BUILDKITE_PULL_REQUEST is not a pull-request number — failing closed (private-repo rule must not be skipped)."
   exit 2
 fi
@@ -33,10 +71,6 @@ command -v rg >/dev/null 2>&1 || { echo "::error::content-policy: ripgrep (rg) r
 _guard_pr_mode=0
 if [[ "${WAVE_JOB_GUARD_PR:-}" == "1" ]]; then
   _guard_pr_mode=1
-  # Never match or print the confidential list in PR mode.
-  unset GUARD_PRIVATE_REPOS \
-    GUARD_PRIVATE_REPOS_01 GUARD_PRIVATE_REPOS_02 GUARD_PRIVATE_REPOS_03 \
-    GUARD_PRIVATE_REPOS_04 GUARD_PRIVATE_REPOS_05 GUARD_PRIVATE_REPOS_06
 fi
 
 VIOLATIONS=0
@@ -120,7 +154,8 @@ check BLOCK abs-user-path    '/(Users|home)/(?!runner/)[a-z][a-z0-9._-]+/'      
 # variable), comma- or space-separated. With WAVE_JOB_GUARD_PR unset, an unset
 # list skips this check (documented local behavior) and a set but empty or
 # degenerate list fails closed. WAVE_JOB_GUARD_PR=1 on a pull-request number
-# skips this rule only; the list is dropped above and never printed. The same
+# skips this rule only when every list name is unset. The flag together with
+# any list name already exited 2 above; the value is never printed. The same
 # flag off a pull request already exited 2.
 if [[ "$_guard_pr_mode" == "1" ]]; then
   echo "public-repo-guard: private-repo rule skipped for PR mode; remaining content-policy rules still run."

@@ -107,11 +107,14 @@ pointer target):
     only on those builds. `.buildkite/scripts/guard-content-policy.sh` and
     `scripts/public-repo-guard/content-policy.sh` then run every rule except
     private-repo, and only when `BUILDKITE_PULL_REQUEST` is a positive
-    pull-request number. The wrapper passes that flag through and does not
-    pass the list into the policy script. The same flag when
-    `BUILDKITE_PULL_REQUEST` is empty, `false`, or not a number fails closed
-    (exit 2), so a default-branch build cannot drop the rule. With the flag
-    unset, a missing list still fails closed.
+    pull-request number and `GUARD_PRIVATE_REPOS` / `GUARD_PRIVATE_REPOS_01`..`_06`
+    are all unset. If the flag is set and any of those names is set (including
+    empty), both scripts exit 2 and leave the list in place: that list is not
+    part of a pull-request build, so both together means the job environment
+    was overridden and the private-repo rule must not be skipped. The same flag
+    when `BUILDKITE_PULL_REQUEST` is empty, `false`, or not a number fails
+    closed (exit 2), so a default-branch build cannot drop the rule. With the
+    flag unset, a missing list still fails closed.
 - **Fork trust.** The secrets-queue steps consume host credentials, so the
   host must (a) run them from the **trusted base ref** as a base-branch build
   — re-running the fork build itself keeps fork metadata

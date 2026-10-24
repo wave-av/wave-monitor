@@ -21,11 +21,14 @@
 # PR mode (WAVE-27678): pull-request builds do not receive the list. The
 # non-secret WAVE_JOB_GUARD_PR=1 runs every content-policy rule except
 # private-repo, and only when BUILDKITE_PULL_REQUEST is a positive integer
-# (Buildkite's pull-request number). The flag is passed through to
-# content-policy.sh; the list is not. The same flag when that variable is
-# empty, "false", or any other non-number fails closed (exit 2), so a
-# default-branch build cannot drop the rule. With the flag unset, a missing
-# list still fails closed.
+# (Buildkite's pull-request number) and none of GUARD_PRIVATE_REPOS or
+# GUARD_PRIVATE_REPOS_01.._06 is set. The flag together with any of those
+# names exits 2: that list is not part of a pull-request build, so both
+# together means the job environment was overridden. The names are not
+# cleared and the rule is not skipped. The same flag when
+# BUILDKITE_PULL_REQUEST is empty, "false", or any other non-number fails
+# closed (exit 2), so a default-branch build cannot drop the rule. With the
+# flag unset, a missing list still fails closed.
 #
 # GHA apt-installs ripgrep when missing; FPC guests must not assume sudo/apt,
 # so a missing rg fails closed with a clear message instead.
@@ -43,8 +46,35 @@ _norm_repo() {
 
 # Buildkite sets BUILDKITE_PULL_REQUEST to the pull-request number, or to the
 # string "false". Only a positive decimal integer selects PR mode.
+# LC_ALL=C so [0-9] is ASCII: in a UTF-8 locale the bracket expression also
+# matches other decimal digits, which must not select pull-request mode.
 _guard_is_pr_number() {
-  [[ "${BUILDKITE_PULL_REQUEST:-}" =~ ^[1-9][0-9]*$ ]]
+  (
+    LC_ALL=C
+    [[ "${BUILDKITE_PULL_REQUEST:-}" =~ ^[1-9][0-9]*$ ]]
+  )
+}
+
+# True when any host-injected private-repo list name is set, including empty.
+# A pull-request build must not carry these names. A set name is an
+# overridden job environment; presence is enough, and the value is never
+# printed.
+_guard_private_list_present() {
+  local _name
+  for _name in \
+    GUARD_PRIVATE_REPOS \
+    GUARD_PRIVATE_REPOS_01 \
+    GUARD_PRIVATE_REPOS_02 \
+    GUARD_PRIVATE_REPOS_03 \
+    GUARD_PRIVATE_REPOS_04 \
+    GUARD_PRIVATE_REPOS_05 \
+    GUARD_PRIVATE_REPOS_06
+  do
+    if [[ -v "$_name" ]]; then
+      return 0
+    fi
+  done
+  return 1
 }
 
 if [ -n "${BUILDKITE_PULL_REQUEST_REPO:-}" ]; then
@@ -60,6 +90,13 @@ fi
 
 # Reject a downgrade before any scan. A legal PR-mode build still needs rg
 # below, because every rule except private-repo must actually run.
+# The list check comes first: WAVE_JOB_GUARD_PR=1 plus any list name exits 2
+# whether or not BUILDKITE_PULL_REQUEST is a pull-request number. Clearing
+# the names and continuing would hide the override.
+if [ "${WAVE_JOB_GUARD_PR:-}" = "1" ] && _guard_private_list_present; then
+  echo "WAVE_JOB_GUARD_PR=1 is set together with the private-repo list — failing closed (this environment looks spoofed; a pull-request build must not carry GUARD_PRIVATE_REPOS or GUARD_PRIVATE_REPOS_01.._06, and the private-repo rule must not be skipped)."
+  exit 2
+fi
 if [ "${WAVE_JOB_GUARD_PR:-}" = "1" ] && ! _guard_is_pr_number; then
   echo "WAVE_JOB_GUARD_PR=1 is set but BUILDKITE_PULL_REQUEST is not a pull-request number — failing closed (private-repo rule must not be skipped)."
   exit 2
@@ -71,12 +108,11 @@ command -v rg >/dev/null 2>&1 || {
 }
 if [ "${WAVE_JOB_GUARD_PR:-}" = "1" ]; then
   echo "guard-content-policy: private-repo rule skipped for PR mode; remaining content-policy rules still run."
+  # The list names are absent; a present name already exited above.
   # content-policy.sh lives outside .buildkite/ and can be edited on a pull
-  # request, so the confidential list must not be in its environment. The
-  # non-secret flag and BUILDKITE_PULL_REQUEST are passed through unchanged.
-  unset GUARD_PRIVATE_REPOS \
-    GUARD_PRIVATE_REPOS_01 GUARD_PRIVATE_REPOS_02 GUARD_PRIVATE_REPOS_03 \
-    GUARD_PRIVATE_REPOS_04 GUARD_PRIVATE_REPOS_05 GUARD_PRIVATE_REPOS_06
+  # request, so this path runs only when the confidential list is not in
+  # the environment. The non-secret flag and BUILDKITE_PULL_REQUEST are
+  # passed through unchanged.
   export WAVE_JOB_GUARD_PR
   exec bash scripts/public-repo-guard/content-policy.sh .
 fi
