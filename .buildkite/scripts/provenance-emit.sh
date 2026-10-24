@@ -17,6 +17,11 @@
 #   when all of them passed. The PR-only governance-enforce step is included
 #   iff BUILDKITE_PULL_REQUEST is a PR number (it is skipped otherwise, and a
 #   skipped step must not be claimed as exited).
+# - Content-policy follows the pipeline `if`. A non-pull-request build of the
+#   pipeline default branch ran guard-content-policy on fpc-isolated-secrets
+#   (name GUARD_PRIVATE_REPOS only). Every other build ran
+#   guard-content-policy-pr on fpc-isolated and received no private-repo list.
+#   The manifest names the step that ran, not the one the `if` skipped.
 # - Self (provenance-emit) is listed exit 0: any DELIVERED artifact implies
 #   the emitter + upload both succeeded, so the step exited 0. Local-only
 #   files from failed runs never leave the ephemeral agent.
@@ -50,48 +55,54 @@ IS_PR="false"
 if [ -n "${BUILDKITE_PULL_REQUEST:-}" ] && [ "${BUILDKITE_PULL_REQUEST:-}" != "false" ]; then
   IS_PR="true"
 fi
+# Same partition as the pipeline `if`: secrets-queue content-policy runs only
+# for a non-pull-request build of the pipeline default branch.
+SECRETS_POLICY="false"
+if [ "$IS_PR" != "true" ] \
+  && [ -n "${BUILDKITE_PIPELINE_DEFAULT_BRANCH:-}" ] \
+  && [ "${BUILDKITE_BRANCH:-}" = "${BUILDKITE_PIPELINE_DEFAULT_BRANCH}" ]; then
+  SECRETS_POLICY="true"
+fi
 
 TMP="$(mktemp -d)"
 STEPS="$TMP/steps.json"
 GUARDS="$TMP/guards.json"
 trap 'rm -rf "$TMP"' EXIT
 
-if [ "$IS_PR" = "true" ]; then
-  INJECTED="guard-content-policy:GUARD_PRIVATE_REPOS,governance-enforce:GH_PACKAGES_READ_TOKEN"
-  cat >"$STEPS" <<'EOF'
-[
-  {"key": "guard-gitleaks", "queue": "fpc-isolated", "command": ".buildkite/scripts/guard-gitleaks.sh", "exit": 0},
-  {"key": "guard-content-policy", "queue": "fpc-isolated-secrets", "command": ".buildkite/scripts/guard-content-policy.sh", "exit": 0},
-  {"key": "node-gates", "queue": "fpc-isolated", "command": ".buildkite/scripts/ci.sh", "exit": 0},
-  {"key": "foundation-secret-scan", "queue": "fpc-isolated", "command": ".buildkite/scripts/foundation-secret-scan.sh", "exit": 0},
-  {"key": "foundation-file-size", "queue": "fpc-isolated", "command": ".buildkite/scripts/foundation-file-size.sh", "exit": 0},
-  {"key": "foundation-skill-validate", "queue": "fpc-isolated", "command": ".buildkite/scripts/foundation-skill-validate.sh", "exit": 0},
-  {"key": "foundation-verify-routes", "queue": "fpc-isolated", "command": ".buildkite/scripts/foundation-verify-routes.sh", "exit": 0},
-  {"key": "governance-enforce", "queue": "fpc-isolated-secrets", "command": ".buildkite/scripts/governance-enforce.sh", "exit": 0},
-  {"key": "provenance-emit", "queue": "fpc-isolated", "command": ".buildkite/scripts/provenance-emit.sh", "exit": 0}
-]
-EOF
-else
+if [ "$SECRETS_POLICY" = "true" ]; then
+  CP_KEY="guard-content-policy"
+  CP_QUEUE="fpc-isolated-secrets"
   INJECTED="guard-content-policy:GUARD_PRIVATE_REPOS"
-  cat >"$STEPS" <<'EOF'
-[
-  {"key": "guard-gitleaks", "queue": "fpc-isolated", "command": ".buildkite/scripts/guard-gitleaks.sh", "exit": 0},
-  {"key": "guard-content-policy", "queue": "fpc-isolated-secrets", "command": ".buildkite/scripts/guard-content-policy.sh", "exit": 0},
-  {"key": "node-gates", "queue": "fpc-isolated", "command": ".buildkite/scripts/ci.sh", "exit": 0},
-  {"key": "foundation-secret-scan", "queue": "fpc-isolated", "command": ".buildkite/scripts/foundation-secret-scan.sh", "exit": 0},
-  {"key": "foundation-file-size", "queue": "fpc-isolated", "command": ".buildkite/scripts/foundation-file-size.sh", "exit": 0},
-  {"key": "foundation-skill-validate", "queue": "fpc-isolated", "command": ".buildkite/scripts/foundation-skill-validate.sh", "exit": 0},
-  {"key": "foundation-verify-routes", "queue": "fpc-isolated", "command": ".buildkite/scripts/foundation-verify-routes.sh", "exit": 0},
-  {"key": "provenance-emit", "queue": "fpc-isolated", "command": ".buildkite/scripts/provenance-emit.sh", "exit": 0}
-]
-EOF
+else
+  CP_KEY="guard-content-policy-pr"
+  CP_QUEUE="fpc-isolated"
+  INJECTED=""
 fi
-cat >"$GUARDS" <<'EOF'
-[
-  {"key": "guard-gitleaks", "verdict": "pass", "detail": "exit 0 (build proceeded past wait barrier)"},
-  {"key": "guard-content-policy", "verdict": "pass", "detail": "exit 0 (build proceeded past wait barrier)"}
-]
-EOF
+if [ "$IS_PR" = "true" ]; then
+  INJECTED="governance-enforce:GH_PACKAGES_READ_TOKEN"
+fi
+
+{
+  printf '%s\n' '['
+  printf '  {"key": "guard-gitleaks", "queue": "fpc-isolated", "command": ".buildkite/scripts/guard-gitleaks.sh", "exit": 0},\n'
+  printf '  {"key": "%s", "queue": "%s", "command": ".buildkite/scripts/guard-content-policy.sh", "exit": 0},\n' "$CP_KEY" "$CP_QUEUE"
+  printf '  {"key": "node-gates", "queue": "fpc-isolated", "command": ".buildkite/scripts/ci.sh", "exit": 0},\n'
+  printf '  {"key": "foundation-secret-scan", "queue": "fpc-isolated", "command": ".buildkite/scripts/foundation-secret-scan.sh", "exit": 0},\n'
+  printf '  {"key": "foundation-file-size", "queue": "fpc-isolated", "command": ".buildkite/scripts/foundation-file-size.sh", "exit": 0},\n'
+  printf '  {"key": "foundation-skill-validate", "queue": "fpc-isolated", "command": ".buildkite/scripts/foundation-skill-validate.sh", "exit": 0},\n'
+  printf '  {"key": "foundation-verify-routes", "queue": "fpc-isolated", "command": ".buildkite/scripts/foundation-verify-routes.sh", "exit": 0},\n'
+  if [ "$IS_PR" = "true" ]; then
+    printf '  {"key": "governance-enforce", "queue": "fpc-isolated-secrets", "command": ".buildkite/scripts/governance-enforce.sh", "exit": 0},\n'
+  fi
+  printf '  {"key": "provenance-emit", "queue": "fpc-isolated", "command": ".buildkite/scripts/provenance-emit.sh", "exit": 0}\n'
+  printf '%s\n' ']'
+} >"$STEPS"
+{
+  printf '%s\n' '['
+  printf '  {"key": "guard-gitleaks", "verdict": "pass", "detail": "exit 0 (build proceeded past wait barrier)"},\n'
+  printf '  {"key": "%s", "verdict": "pass", "detail": "exit 0 (build proceeded past wait barrier)"}\n' "$CP_KEY"
+  printf '%s\n' ']'
+} >"$GUARDS"
 
 : "${BUILDKITE_COMMIT:?provenance-emit: BUILDKITE_COMMIT is required}"
 node "$PROV/bin/emit-provenance.mjs" \

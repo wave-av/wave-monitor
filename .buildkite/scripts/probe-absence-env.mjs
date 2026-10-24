@@ -13,22 +13,32 @@
 //      withheld) that S1/S2 close by other means.
 //   B. UNEXPECTED-SECRET-NAME: any other secret-NAMED var (vendored
 //      SECRET_KEY_RE composition) not on the operational allowlist flags.
-//      Seed allowlist: BUILDKITE_AGENT_ACCESS_TOKEN (agent's own credential,
-//      present on every job). Extend per step via ABSENCE_PROBE_ENV_ALLOW
+//      Seed allowlist: the agent's own credentials (BUILDKITE_AGENT_ACCESS_TOKEN
+//      and BUILDKITE_AGENT_JOB_API_TOKEN) and BUILDKITE_STEP_KEY (the step
+//      identifier; the name ends in KEY, so the rule matches it). All three
+//      are present on every job. Extend per step via ABSENCE_PROBE_ENV_ALLOW
 //      (space-separated, set in the pipeline step env block — steps take no
 //      command arguments under no-command-eval).
 //
-// The probe step runs on queue fpc-isolated-secrets with NO injection mapped:
-// the secrets queue (not fpc-isolated) is what makes check A non-vacuous —
-// a host that injects broadly would trip it. Report-mode wiring soft-fails
-// the step; see absence-probes-PROMOTION.md.
+// Default-branch builds that are not pull requests run this script on queue
+// fpc-isolated-secrets with NO injection mapped: the secrets queue (not
+// fpc-isolated) is what makes check A non-vacuous — a host that injects
+// broadly would trip it. Pull-request builds and every other branch run the
+// same script on fpc-isolated, which receives no secrets, so check A cannot
+// see secrets-queue injection there. Neither step soft-fails: a FLAG fails
+// the build. GH_PACKAGES_READ_TOKEN stays in FORBIDDEN_ALWAYS as a tripwire
+// whether or not any step still requests it. See absence-probes-PROMOTION.md.
 //
 // Exit: 0 PASS, 1 FLAG (finding), 2 internal error (fail closed).
 
 import { isForkShaped, isSecretName, emitReceipt, parseArgs } from './absence-scanner.mjs';
 
 const FORBIDDEN_ALWAYS = ['GH_PACKAGES_READ_TOKEN', 'GUARD_PRIVATE_REPOS'];
-const OPERATIONAL_ALLOW = new Set(['BUILDKITE_AGENT_ACCESS_TOKEN']);
+const OPERATIONAL_ALLOW = new Set([
+  'BUILDKITE_AGENT_ACCESS_TOKEN',
+  'BUILDKITE_AGENT_JOB_API_TOKEN',
+  'BUILDKITE_STEP_KEY',
+]);
 
 function main(argv, env) {
   const args = parseArgs(argv);

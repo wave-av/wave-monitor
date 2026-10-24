@@ -50,7 +50,10 @@ _ensure_gitleaks() {
     if [[ "$os" == "linux" && "$arch" == "x64" ]]; then
       curl -fsSL --proto '=https' --tlsv1.2 -o "$cache/g.tar.gz" \
         "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz" || return 1
-      (cd "$cache" && echo "${GITLEAKS_SHA256}  g.tar.gz" | sha256sum -c -) || return 1
+      # sha256sum writes "g.tar.gz: OK" to stdout. Callers capture this
+      # function's stdout as the binary path, so the checksum line must not
+      # be part of that path.
+      (cd "$cache" && echo "${GITLEAKS_SHA256}  g.tar.gz" | sha256sum -c - >/dev/null) || return 1
     else
       curl -fsSL --proto '=https' --tlsv1.2 -o "$cache/g.tar.gz" \
         "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_${os}_${arch}.tar.gz" || return 1

@@ -285,6 +285,27 @@ describe('probe CLIs end to end', () => {
     expect(flagged.out).not.toContain(forkValue);
   });
 
+  it('probe-env allows the agent job token and step key, and still flags the packages token', () => {
+    const ok = runProbe('probe-absence-env.mjs', [], {
+      ...CLEAN_ENV,
+      BUILDKITE_AGENT_ACCESS_TOKEN: 'placeholder-access',
+      BUILDKITE_AGENT_JOB_API_TOKEN: 'placeholder-job',
+      BUILDKITE_STEP_KEY: 'probe-absence-env-pr',
+    });
+    expect(ok.status).toBe(0);
+    expect(ok.receipt.verdict).toBe('PASS');
+    const flagged = runProbe('probe-absence-env.mjs', [], {
+      ...CLEAN_ENV,
+      BUILDKITE_AGENT_JOB_API_TOKEN: 'placeholder-job',
+      BUILDKITE_STEP_KEY: 'probe-absence-env-pr',
+      GH_PACKAGES_READ_TOKEN: 'placeholder-packages',
+    });
+    expect(flagged.status).toBe(1);
+    expect(flagged.receipt.hits.some((h) => h.name === 'GH_PACKAGES_READ_TOKEN')).toBe(true);
+    expect(flagged.out).not.toContain('placeholder-packages');
+    expect(flagged.out).not.toContain('placeholder-job');
+  });
+
   it('probe-env honors the operational allowlist extension', () => {
     const allowed = runProbe('probe-absence-env.mjs', [], {
       ...CLEAN_ENV,
