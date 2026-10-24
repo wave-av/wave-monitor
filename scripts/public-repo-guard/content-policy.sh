@@ -10,14 +10,77 @@
 # Scope: scans the working tree (the state being merged). Run AFTER checkout.
 # Exits non-zero on any BLOCK violation. Allowlist a specific line with an inline
 # `# guard:allow <reason>` comment, or exclude paths via a .guardignore (one glob
-# per line) at the repo root.
+# per line) at the repo root. PR mode (WAVE_JOB_GUARD_PR=1) ignores inline
+# markers; the Buildkite wrapper also supplies the default branch's
+# .guardignore there (WAVE-28333 M1). rg's own ignore files (.ignore, .rgignore,
+# .gitignore) never exempt anything: the scan runs with --no-ignore (MF-W1).
 #
 # Usage: scripts/public-repo-guard/content-policy.sh [root]   (default root = .)
 set -uo pipefail
 
 ROOT="${1:-.}"
 cd "$ROOT" || { echo "::error::content-policy: cannot cd to $ROOT"; exit 2; }
+
+# WAVE_JOB_GUARD_PR=1 is the non-secret pull-request signal. Honor it only
+# when BUILDKITE_PULL_REQUEST is a positive integer and the private-repo
+# list is unset (GUARD_PRIVATE_REPOS and GUARD_PRIVATE_REPOS_01.._06).
+# The flag together with any of those names — set, even to empty — fails
+# closed before rules run. The names are not cleared. Empty, "false", and
+# any other non-number also fail closed, so a default-branch build cannot
+# skip private-repo. With the flag unset, an unset list still skips the rule
+# (local and direct runs); a set list still runs it.
+
+# LC_ALL=C so [0-9] is ASCII: in a UTF-8 locale the bracket expression also
+# matches other decimal digits, which must not select pull-request mode.
+_guard_is_pr_number() {
+  (
+    LC_ALL=C
+    [[ "${BUILDKITE_PULL_REQUEST:-}" =~ ^[1-9][0-9]*$ ]]
+  )
+}
+
+# True when any private-repo list name is set, including empty. Same names
+# the Buildkite wrapper refuses to carry into pull-request mode. The value
+# is never printed.
+_guard_private_list_present() {
+  local _name
+  for _name in \
+    GUARD_PRIVATE_REPOS \
+    GUARD_PRIVATE_REPOS_01 \
+    GUARD_PRIVATE_REPOS_02 \
+    GUARD_PRIVATE_REPOS_03 \
+    GUARD_PRIVATE_REPOS_04 \
+    GUARD_PRIVATE_REPOS_05 \
+    GUARD_PRIVATE_REPOS_06
+  do
+    if [[ -v "$_name" ]]; then
+      return 0
+    fi
+  done
+  return 1
+}
+
+# Any non-empty flag other than 1 fails closed: treating it as unset would
+# let WAVE_JOB_GUARD_PR=0 with no list skip private-repo and exit 0.
+if [[ -n "${WAVE_JOB_GUARD_PR:-}" && "${WAVE_JOB_GUARD_PR}" != "1" ]]; then
+  echo "::error title=public-repo-guard (pr-mode)::WAVE_JOB_GUARD_PR must be unset, empty, or 1 — failing closed (the private-repo rule must not be skipped)."
+  exit 2
+fi
+if [[ "${WAVE_JOB_GUARD_PR:-}" == "1" ]] && _guard_private_list_present; then
+  echo "::error title=public-repo-guard (pr-mode)::WAVE_JOB_GUARD_PR=1 is set together with the private-repo list — failing closed (this environment looks spoofed; a pull-request build must not carry GUARD_PRIVATE_REPOS or GUARD_PRIVATE_REPOS_01.._06, and the private-repo rule must not be skipped)."
+  exit 2
+fi
+if [[ "${WAVE_JOB_GUARD_PR:-}" == "1" ]] && ! _guard_is_pr_number; then
+  echo "::error title=public-repo-guard (pr-mode)::WAVE_JOB_GUARD_PR=1 is set but BUILDKITE_PULL_REQUEST is not a pull-request number — failing closed (private-repo rule must not be skipped)."
+  exit 2
+fi
+
 command -v rg >/dev/null 2>&1 || { echo "::error::content-policy: ripgrep (rg) required"; exit 2; }
+
+_guard_pr_mode=0
+if [[ "${WAVE_JOB_GUARD_PR:-}" == "1" ]]; then
+  _guard_pr_mode=1
+fi
 
 VIOLATIONS=0
 
@@ -44,20 +107,30 @@ fi
 check() {
   local sev="$1" name="$2" re="$3" why="$4"
   [[ -z "$re" ]] && { echo "::error::content-policy: internal bug — empty regex for rule '$name'"; exit 2; }
-  # --hidden + --no-ignore-vcs so the scan covers dotfiles/dotdirs (.github/**,
+  # --hidden + --no-ignore so the scan covers dotfiles/dotdirs (.github/**,
   # .npmrc, …) and committed-but-gitignored files — a public leak hides there too.
+  # --no-ignore also drops .ignore/.rgignore (any depth or parent dir), so the
+  # IGNORE globs (built-ins + .guardignore) are the only exclusion source (MF-W1).
+  # -a: a NUL byte must not turn a file into "binary" and hide its matches
+  # (MF-W4); RIPGREP_CONFIG_PATH is dropped so no config can add flags.
   # rg exit: 0=match, 1=no match, >=2=real error → FAIL CLOSED (never pass a gate
   # silently because the scanner errored).
   local raw rc
-  raw="$(rg -nP --hidden --no-ignore-vcs "${IGNORE[@]}" -- "$re" . 2>/dev/null)"; rc=$?
+  raw="$(env -u RIPGREP_CONFIG_PATH rg -nP -a --hidden --no-ignore "${IGNORE[@]}" -- "$re" . 2>/dev/null)"; rc=$?
   if (( rc >= 2 )); then
     echo "::error title=public-repo-guard ($name)::ripgrep failed (exit $rc) scanning rule '$name' — failing closed."; exit 2
   fi
   # Only the documented inline form `# guard:allow <reason>` suppresses a hit, and
   # the reason is mandatory (non-space after the marker) — a bare marker, or the
   # string appearing elsewhere on the line, must NOT bypass detection.
+  # PR mode (WAVE-28333 M1) honors no marker: a marker is pull-request
+  # content, so it must not exempt pull-request lines.
   local matches
-  matches="$(printf '%s' "$raw" | grep -vE '#[[:space:]]*guard:allow[[:space:]]+[^[:space:]]' || true)"
+  if [[ "$_guard_pr_mode" == "1" ]]; then
+    matches="$raw"
+  else
+    matches="$(printf '%s' "$raw" | grep -vE '#[[:space:]]*guard:allow[[:space:]]+[^[:space:]]' || true)"
+  fi
   [[ -z "$matches" ]] && return 0
   local count; count="$(printf '%s\n' "$matches" | grep -c '' )"
   echo "::group::[$sev] $name — $why"
@@ -97,10 +170,15 @@ check BLOCK abs-user-path    '/(Users|home)/(?!runner/)[a-z][a-z0-9._-]+/'      
 # Private WAVE repo/product names that must never appear in a public tree. The
 # names are NOT hardcoded here (this file is itself public) — they are supplied
 # at run time via GUARD_PRIVATE_REPOS (CI injects it from an org-level Actions
-# variable), comma- or space-separated. UNSET locally → this check is skipped
-# (documented dev behavior). SET but empty/degenerate → fail closed: an
-# explicit empty value must never silently disable the rule.
-if [[ -n "${GUARD_PRIVATE_REPOS+x}" ]]; then
+# variable), comma- or space-separated. With WAVE_JOB_GUARD_PR unset, an unset
+# list skips this check (documented local behavior) and a set but empty or
+# degenerate list fails closed. WAVE_JOB_GUARD_PR=1 on a pull-request number
+# skips this rule only when every list name is unset. The flag together with
+# any list name already exited 2 above; the value is never printed. The same
+# flag off a pull request already exited 2.
+if [[ "$_guard_pr_mode" == "1" ]]; then
+  echo "public-repo-guard: private-repo rule NOT checked (PR mode, no list) — private names were not scanned; remaining content-policy rules still run."
+elif [[ -n "${GUARD_PRIVATE_REPOS+x}" ]]; then
   # Flatten newlines/CRs first: `read` stops at the first newline, so a
   # multi-line value would silently drop every name after line one. Tabs
   # also separate (repo names never contain them).
@@ -142,9 +220,10 @@ check BLOCK private-key      '-----BEGIN [A-Z ]*PRIVATE KEY-----'               
 # and the standard excludes apply to this BLOCK rule too. Match `.env` plus any
 # `.env.*` variant (development, test, …), then drop template forms. Include-globs
 # come first; the IGNORE excludes come last (last match wins, so a .env under e.g.
-# node_modules stays excluded). --hidden because these are dotfiles; --no-ignore-vcs
-# so a committed-but-gitignored .env is still caught; fail CLOSED on rg error.
-_envraw="$(rg --files --hidden --no-ignore-vcs -g '.env' -g '.env.*' "${IGNORE[@]}" 2>/dev/null)"; _envrc=$?
+# node_modules stays excluded). --hidden because these are dotfiles; --no-ignore
+# so a committed-but-gitignored (or .ignore/.rgignore-hidden) .env is still
+# caught; fail CLOSED on rg error.
+_envraw="$(env -u RIPGREP_CONFIG_PATH rg --files --hidden --no-ignore -g '.env' -g '.env.*' "${IGNORE[@]}" 2>/dev/null)"; _envrc=$?
 if (( _envrc >= 2 )); then
   echo "::error title=public-repo-guard (committed-dotenv)::ripgrep failed (exit $_envrc) — failing closed."; exit 2
 fi
@@ -160,5 +239,10 @@ fi
 if (( VIOLATIONS > 0 )); then
   echo "::error::public-repo-guard: $VIOLATIONS blocking content-policy violation(s) — see annotations above."
   exit 1
+fi
+if [[ "$_guard_pr_mode" == "1" ]]; then
+  # Not a clean pass: PR mode never scans for private names.
+  echo "public-repo-guard: content policy OK for the rules that ran; private-repo rule NOT checked (PR mode, no list)"
+  exit 0
 fi
 echo "public-repo-guard: content policy OK"
