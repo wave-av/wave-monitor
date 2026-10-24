@@ -10,7 +10,9 @@
 # Scope: scans the working tree (the state being merged). Run AFTER checkout.
 # Exits non-zero on any BLOCK violation. Allowlist a specific line with an inline
 # `# guard:allow <reason>` comment, or exclude paths via a .guardignore (one glob
-# per line) at the repo root.
+# per line) at the repo root. PR mode (WAVE_JOB_GUARD_PR=1) ignores inline
+# markers; the Buildkite wrapper also supplies the default branch's
+# .guardignore there (WAVE-28333 M1).
 #
 # Usage: scripts/public-repo-guard/content-policy.sh [root]   (default root = .)
 set -uo pipefail
@@ -116,8 +118,14 @@ check() {
   # Only the documented inline form `# guard:allow <reason>` suppresses a hit, and
   # the reason is mandatory (non-space after the marker) — a bare marker, or the
   # string appearing elsewhere on the line, must NOT bypass detection.
+  # PR mode (WAVE-28333 M1) honors no marker: a marker is pull-request
+  # content, so it must not exempt pull-request lines.
   local matches
-  matches="$(printf '%s' "$raw" | grep -vE '#[[:space:]]*guard:allow[[:space:]]+[^[:space:]]' || true)"
+  if [[ "$_guard_pr_mode" == "1" ]]; then
+    matches="$raw"
+  else
+    matches="$(printf '%s' "$raw" | grep -vE '#[[:space:]]*guard:allow[[:space:]]+[^[:space:]]' || true)"
+  fi
   [[ -z "$matches" ]] && return 0
   local count; count="$(printf '%s\n' "$matches" | grep -c '' )"
   echo "::group::[$sev] $name — $why"
