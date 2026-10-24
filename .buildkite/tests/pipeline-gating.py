@@ -4,8 +4,9 @@ blocks every secret-bearing step in .buildkite/pipeline.yml.
 
 Checks (all must PASS, exit 0):
   1. pipeline.yml parses as YAML with a `steps:` list.
-  1g. Guards carry no soft_fail/allow_failure/if/branches/skip; waits carry
-      no continue_on_failure (WAVE-27331 gap 1).
+  1g. Guards carry no soft_fail/allow_failure/branches/skip, and no if other
+      than the secret-queue fence; waits carry no continue_on_failure
+      (WAVE-27331 gap 1).
   1h. No `group:` nesting — the walk is top-level only (gap 3).
   1i. No plural `commands:` lists — the walk keys on `command` and would
       skip them while BK runs every entry (review).
@@ -43,6 +44,31 @@ GUARD_KEYS = ("guard-gitleaks", "guard-content-policy")
 # BK pipeline schema attributes that must never appear on a guard step — a
 # guard that can soft-fail, skip, or narrow itself is not a gate.  # guard:allow BK pipeline schema attributes, not repo references
 FORBIDDEN_GUARD_KEYS = ("soft_fail", "allow_failure", "if", "branches", "skip")
+# Exact secret-queue fence. A guard may carry this if and no other text:
+# it stays true for default-branch schedule/webhook/api/ui builds, so the
+# guard still runs whenever a secrets-queue step runs.
+SECRET_QUEUE_FENCE = (
+    'build.branch == pipeline.default_branch && (build.source == "schedule" || '
+    'build.source == "webhook" || build.source == "api" || build.source == "ui") '
+    '&& build.pull_request.id == null && build.tag == null'
+)
+
+
+def _norm_expr(value):
+    if not isinstance(value, str):
+        return None
+    return " ".join(value.split())
+
+
+def guard_escape_keys(step):
+    bad = []
+    for key in FORBIDDEN_GUARD_KEYS:
+        if key not in step:
+            continue
+        if key == "if" and _norm_expr(step.get("if")) == _norm_expr(SECRET_QUEUE_FENCE):
+            continue
+        bad.append(key)
+    return bad
 PINNED_PROBES = ("probe-absence-env", "probe-absence-fs", "probe-absence-log")
 EXPECTED_PROBE_COMMANDS = {
     "probe-absence-env": ".buildkite/scripts/probe-absence-env.mjs",
@@ -208,7 +234,7 @@ def evaluate(pipeline_path, root):
         if g is None:
             check(f"1g {gkey} present", False, "missing guard step")
             continue
-        bad = [k for k in FORBIDDEN_GUARD_KEYS if k in g]
+        bad = guard_escape_keys(g)
         check(f"1g {gkey} carries no escape hatch", not bad, f"has {bad}" if bad else "")
     for i, s in enumerate(steps):
         if isinstance(s, dict) and "wait" in s and s.get("continue_on_failure") is True:
@@ -389,6 +415,15 @@ def selftest():
     rows = _evaluate_yaml(VALID.replace("key: guard-content-policy\n",
                                         "key: guard-content-policy\n    branches: main\n"), FILES)
     t("gap1 guard branches caught", bool(_failed(rows, "1g")), "")
+    rows = _evaluate_yaml(VALID.replace(
+        "key: guard-content-policy\n",
+        "key: guard-content-policy\n    if: 'build.branch == \"main\"'\n"), FILES)
+    t("gap1 guard if caught", bool(_failed(rows, "1g")), "")
+    rows = _evaluate_yaml(VALID.replace(
+        "key: guard-content-policy\n",
+        "key: guard-content-policy\n    if: '" + SECRET_QUEUE_FENCE + "'\n"), FILES)
+    t("gap1 secret-queue fence if allowed", not _failed(rows, "1g"),
+      str(_failed(rows, "1g")))
     rows = _evaluate_yaml(VALID.replace("  - wait: ~\n",
                                         "  - wait: ~\n    continue_on_failure: true\n", 1), FILES)
     t("gap1 wait continue_on_failure caught", bool(_failed(rows, "1g")), "")

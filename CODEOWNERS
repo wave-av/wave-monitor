@@ -11,5 +11,6 @@
 
 # Governance / CI / config.
 /.github/                 @wave-av/streaming-team
+/.buildkite/              @wave-av/streaming-team
 /package.json             @wave-av/streaming-team
 /electron.vite.config.ts  @wave-av/streaming-team
