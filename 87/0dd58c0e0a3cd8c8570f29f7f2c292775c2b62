@@ -1,0 +1,22 @@
+.buildkite/absence-probes-PROMOTION.md
+  h_af5ac1a9798224 21-23,33-37
+.buildkite/pipeline.yml
+  h_af5ac1a9798224 9-12,40-44
+.buildkite/scripts/governance-enforce.sh
+  h_af5ac1a9798224 20-27,34
+.buildkite/scripts/guard-content-policy.sh
+  h_af5ac1a9798224 41
+README.md
+  h_af5ac1a9798224 153-160
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.23",
+  "base_commit_sha": "870dd58c0e0a3cd8c8570f29f7f2c292775c2b62",
+  "prompts": {},
+  "humans": {
+    "h_af5ac1a9798224": {
+      "author": "Jake Fineman <jakefineman@gmail.com>"
+    }
+  }
+}
