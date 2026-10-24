@@ -12,7 +12,8 @@
 # `# guard:allow <reason>` comment, or exclude paths via a .guardignore (one glob
 # per line) at the repo root. PR mode (WAVE_JOB_GUARD_PR=1) ignores inline
 # markers; the Buildkite wrapper also supplies the default branch's
-# .guardignore there (WAVE-28333 M1).
+# .guardignore there (WAVE-28333 M1). rg's own ignore files (.ignore, .rgignore,
+# .gitignore) never exempt anything: the scan runs with --no-ignore (MF-W1).
 #
 # Usage: scripts/public-repo-guard/content-policy.sh [root]   (default root = .)
 set -uo pipefail
@@ -106,12 +107,14 @@ fi
 check() {
   local sev="$1" name="$2" re="$3" why="$4"
   [[ -z "$re" ]] && { echo "::error::content-policy: internal bug — empty regex for rule '$name'"; exit 2; }
-  # --hidden + --no-ignore-vcs so the scan covers dotfiles/dotdirs (.github/**,
+  # --hidden + --no-ignore so the scan covers dotfiles/dotdirs (.github/**,
   # .npmrc, …) and committed-but-gitignored files — a public leak hides there too.
+  # --no-ignore also drops .ignore/.rgignore (any depth or parent dir), so the
+  # IGNORE globs (built-ins + .guardignore) are the only exclusion source (MF-W1).
   # rg exit: 0=match, 1=no match, >=2=real error → FAIL CLOSED (never pass a gate
   # silently because the scanner errored).
   local raw rc
-  raw="$(rg -nP --hidden --no-ignore-vcs "${IGNORE[@]}" -- "$re" . 2>/dev/null)"; rc=$?
+  raw="$(rg -nP --hidden --no-ignore "${IGNORE[@]}" -- "$re" . 2>/dev/null)"; rc=$?
   if (( rc >= 2 )); then
     echo "::error title=public-repo-guard ($name)::ripgrep failed (exit $rc) scanning rule '$name' — failing closed."; exit 2
   fi
@@ -215,9 +218,10 @@ check BLOCK private-key      '-----BEGIN [A-Z ]*PRIVATE KEY-----'               
 # and the standard excludes apply to this BLOCK rule too. Match `.env` plus any
 # `.env.*` variant (development, test, …), then drop template forms. Include-globs
 # come first; the IGNORE excludes come last (last match wins, so a .env under e.g.
-# node_modules stays excluded). --hidden because these are dotfiles; --no-ignore-vcs
-# so a committed-but-gitignored .env is still caught; fail CLOSED on rg error.
-_envraw="$(rg --files --hidden --no-ignore-vcs -g '.env' -g '.env.*' "${IGNORE[@]}" 2>/dev/null)"; _envrc=$?
+# node_modules stays excluded). --hidden because these are dotfiles; --no-ignore
+# so a committed-but-gitignored (or .ignore/.rgignore-hidden) .env is still
+# caught; fail CLOSED on rg error.
+_envraw="$(rg --files --hidden --no-ignore -g '.env' -g '.env.*' "${IGNORE[@]}" 2>/dev/null)"; _envrc=$?
 if (( _envrc >= 2 )); then
   echo "::error title=public-repo-guard (committed-dotenv)::ripgrep failed (exit $_envrc) — failing closed."; exit 2
 fi
