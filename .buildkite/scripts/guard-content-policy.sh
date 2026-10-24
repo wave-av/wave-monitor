@@ -28,7 +28,10 @@
 # cleared and the rule is not skipped. The same flag when
 # BUILDKITE_PULL_REQUEST is empty, "false", or any other non-number fails
 # closed (exit 2), so a default-branch build cannot drop the rule. With the
-# flag unset, a missing list still fails closed.
+# flag unset, a missing list still fails closed. Any other non-empty flag
+# value (0, true, " 1", ...) fails closed too; empty counts as unset.
+# PR mode is not a private-name clearance: its log says the private-repo
+# rule was NOT checked (WAVE-27678 follow-up M3).
 #
 # GHA apt-installs ripgrep when missing; FPC guests must not assume sudo/apt,
 # so a missing rg fails closed with a clear message instead.
@@ -93,6 +96,13 @@ fi
 # The list check comes first: WAVE_JOB_GUARD_PR=1 plus any list name exits 2
 # whether or not BUILDKITE_PULL_REQUEST is a pull-request number. Clearing
 # the names and continuing would hide the override.
+case "${WAVE_JOB_GUARD_PR:-}" in
+  "" | 1) ;;
+  *)
+    echo "WAVE_JOB_GUARD_PR must be unset, empty, or 1 — failing closed (any other value is a misconfigured job environment; the private-repo rule must not be skipped)."
+    exit 2
+    ;;
+esac
 if [ "${WAVE_JOB_GUARD_PR:-}" = "1" ] && _guard_private_list_present; then
   echo "WAVE_JOB_GUARD_PR=1 is set together with the private-repo list — failing closed (this environment looks spoofed; a pull-request build must not carry GUARD_PRIVATE_REPOS or GUARD_PRIVATE_REPOS_01.._06, and the private-repo rule must not be skipped)."
   exit 2
@@ -107,7 +117,7 @@ command -v rg >/dev/null 2>&1 || {
   exit 2
 }
 if [ "${WAVE_JOB_GUARD_PR:-}" = "1" ]; then
-  echo "guard-content-policy: private-repo rule skipped for PR mode; remaining content-policy rules still run."
+  echo "guard-content-policy: private-repo rule NOT checked (PR mode, no list) — private names were not scanned; remaining content-policy rules still run."
   # The list names are absent; a present name already exited above.
   # content-policy.sh lives outside .buildkite/ and can be edited on a pull
   # request, so this path runs only when the confidential list is not in
