@@ -176,8 +176,9 @@ _guard_run_trusted_pr() {
       || _guard_fail "cannot extract the default-branch .guardignore"
   fi
   # Inline markers are pull-request content: neutralize every one in the copy.
+  # -a so a NUL byte cannot hide a marker; no rg config may add flags (MF-W1b).
   rc=0
-  (cd "$_guard_work/tree" && rg -l0 --hidden --no-ignore -F 'guard:allow' .) \
+  (cd "$_guard_work/tree" && env -u RIPGREP_CONFIG_PATH rg -l0 -a --hidden --no-ignore -F 'guard:allow' .) \
     > "$_guard_work/markers.lst" || rc=$?
   if [ "$rc" -ge 2 ]; then
     _guard_fail "ripgrep failed (exit $rc) listing guard:allow markers"
