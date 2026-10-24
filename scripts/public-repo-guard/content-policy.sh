@@ -57,6 +57,12 @@ _guard_private_list_present() {
   return 1
 }
 
+# Any non-empty flag other than 1 fails closed: treating it as unset would
+# let WAVE_JOB_GUARD_PR=0 with no list skip private-repo and exit 0.
+if [[ -n "${WAVE_JOB_GUARD_PR:-}" && "${WAVE_JOB_GUARD_PR}" != "1" ]]; then
+  echo "::error title=public-repo-guard (pr-mode)::WAVE_JOB_GUARD_PR must be unset, empty, or 1 — failing closed (the private-repo rule must not be skipped)."
+  exit 2
+fi
 if [[ "${WAVE_JOB_GUARD_PR:-}" == "1" ]] && _guard_private_list_present; then
   echo "::error title=public-repo-guard (pr-mode)::WAVE_JOB_GUARD_PR=1 is set together with the private-repo list — failing closed (this environment looks spoofed; a pull-request build must not carry GUARD_PRIVATE_REPOS or GUARD_PRIVATE_REPOS_01.._06, and the private-repo rule must not be skipped)."
   exit 2
@@ -158,7 +164,7 @@ check BLOCK abs-user-path    '/(Users|home)/(?!runner/)[a-z][a-z0-9._-]+/'      
 # any list name already exited 2 above; the value is never printed. The same
 # flag off a pull request already exited 2.
 if [[ "$_guard_pr_mode" == "1" ]]; then
-  echo "public-repo-guard: private-repo rule skipped for PR mode; remaining content-policy rules still run."
+  echo "public-repo-guard: private-repo rule NOT checked (PR mode, no list) — private names were not scanned; remaining content-policy rules still run."
 elif [[ -n "${GUARD_PRIVATE_REPOS+x}" ]]; then
   # Flatten newlines/CRs first: `read` stops at the first newline, so a
   # multi-line value would silently drop every name after line one. Tabs
@@ -219,5 +225,10 @@ fi
 if (( VIOLATIONS > 0 )); then
   echo "::error::public-repo-guard: $VIOLATIONS blocking content-policy violation(s) — see annotations above."
   exit 1
+fi
+if [[ "$_guard_pr_mode" == "1" ]]; then
+  # Not a clean pass: PR mode never scans for private names.
+  echo "public-repo-guard: content policy OK for the rules that ran; private-repo rule NOT checked (PR mode, no list)"
+  exit 0
 fi
 echo "public-repo-guard: content policy OK"
