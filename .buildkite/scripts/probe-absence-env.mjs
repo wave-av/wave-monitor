@@ -13,8 +13,10 @@
 //      withheld) that S1/S2 close by other means.
 //   B. UNEXPECTED-SECRET-NAME: any other secret-NAMED var (vendored
 //      SECRET_KEY_RE composition) not on the operational allowlist flags.
-//      Seed allowlist: BUILDKITE_AGENT_ACCESS_TOKEN (agent's own credential,
-//      present on every job). Extend per step via ABSENCE_PROBE_ENV_ALLOW
+//      Seed allowlist: the agent's own credentials (BUILDKITE_AGENT_ACCESS_TOKEN
+//      and BUILDKITE_AGENT_JOB_API_TOKEN) and BUILDKITE_STEP_KEY (the step
+//      identifier; the name ends in KEY, so the rule matches it). All three
+//      are present on every job. Extend per step via ABSENCE_PROBE_ENV_ALLOW
 //      (space-separated, set in the pipeline step env block — steps take no
 //      command arguments under no-command-eval).
 //
@@ -32,7 +34,11 @@
 import { isForkShaped, isSecretName, emitReceipt, parseArgs } from './absence-scanner.mjs';
 
 const FORBIDDEN_ALWAYS = ['GH_PACKAGES_READ_TOKEN', 'GUARD_PRIVATE_REPOS'];
-const OPERATIONAL_ALLOW = new Set(['BUILDKITE_AGENT_ACCESS_TOKEN']);
+const OPERATIONAL_ALLOW = new Set([
+  'BUILDKITE_AGENT_ACCESS_TOKEN',
+  'BUILDKITE_AGENT_JOB_API_TOKEN',
+  'BUILDKITE_STEP_KEY',
+]);
 
 function main(argv, env) {
   const args = parseArgs(argv);
