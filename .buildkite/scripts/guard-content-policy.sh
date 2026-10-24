@@ -38,7 +38,7 @@ if [ -n "${BUILDKITE_PULL_REQUEST_REPO:-}" ]; then
   if [ -z "$_head" ] || [ -z "$_pipe" ] || [ "$_head" != "$_pipe" ]; then
     # Log NORMALIZED forms: raw URLs can embed userinfo credentials.
     echo "fork PR detected (head ${_head:-<unparseable>} != pipeline ${_pipe:-<unparseable>}) — refusing to run with host-injected credentials."
-    echo "Host must run the trusted base-revision script or approve a trusted run; see README.md (Buildkite runbook)."
+    echo "Host must approve a trusted re-run; see README.md (Buildkite runbook). There is no base-revision checkout (WAVE-27333)."
     exit 2
   fi
 fi

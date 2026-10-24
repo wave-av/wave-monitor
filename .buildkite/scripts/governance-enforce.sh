@@ -17,18 +17,21 @@
 # The pipeline marks this step pr_only, so the fallback rarely runs.
 #
 # Fork trust: this step consumes a host-injected credential, so it must never
-# run PR-controlled code from a fork WITH the injection. The host must (a) run
-# the secrets-queue steps from the trusted base revision, (b) withhold
-# injection for fork builds, and (c) approval-gate trusted re-runs — see
-# README.md (Buildkite runbook). As defense-in-depth this script ALSO refuses
-# when the PR head repo differs from the pipeline repo.
+# run PR-controlled code from a fork WITH the injection. There is NO
+# base-revision checkout in the host (WAVE-27333: searched end to end, the
+# agent checks out BUILDKITE_COMMIT); the verified stack instead is (a) fork
+# builds never trigger on venue pipelines (build_pull_request_forks=false,
+# API-verified on all 12 fleet pipelines), (b) injection withheld for
+# fork-shaped builds, and (c) approval-gated trusted re-runs — see README.md
+# (Buildkite runbook). As defense-in-depth this script ALSO refuses when the
+# PR head repo differs from the pipeline repo.
 set -euo pipefail
 cd "$(dirname "$0")/../.."
 
 if [ -n "${BUILDKITE_PULL_REQUEST_REPO:-}" ] && [ -n "${BUILDKITE_REPO:-}" ] \
    && [ "$BUILDKITE_PULL_REQUEST_REPO" != "$BUILDKITE_REPO" ]; then
   echo "fork PR detected (head $BUILDKITE_PULL_REQUEST_REPO != pipeline $BUILDKITE_REPO) — refusing to run with host-injected credentials."
-  echo "Host must run the trusted base-revision script or approve a trusted run; see README.md (Buildkite runbook)."
+  echo "Host must approve a trusted re-run; see README.md (Buildkite runbook). There is no base-revision checkout (WAVE-27333)."
   exit 2
 fi
 

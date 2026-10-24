@@ -150,11 +150,14 @@ pointer target):
   every run (a FLAG naming a pipeline secret on a fork build means the host
   failed to withhold; generic unexpected-name FLAGs are allowlist tuning,
   not withholding failures).
-- **Base-pinned execution.** The host MUST check out the trusted base revision
-  (not the PR head) for the `probe-*` steps, so a fork cannot neuter the
-  detectors it is observed by. Same control the secrets-queue steps need;
-  R1 fixtures prove the dependency. Pending verification (PROMOTION.md P1) —
-  until it holds, fork-observable probe behavior is advisory, not proof.
+- **No fork builds on venue pipelines.** There is NO base-revision checkout
+  in the host (WAVE-27333: searched end to end, stock BK checks out the
+  triggering commit) — and none is needed: `build_pull_request_forks=false`
+  (API-verified on all 12 fleet pipelines) means fork builds never trigger,
+  so a fork cannot neuter the detectors it is observed by. Backstopped by
+  zero injection for fork-shaped builds plus in-script refusal. Until the
+  provider flags are re-verified in venue (PROMOTION.md P1), fork-observable
+  probe behavior is advisory, not proof.
 - **Ungated.** Probe steps carry no `depends_on` and sit in no wait-segment
   shadow: gating them on guards would blind them exactly when guards fail.
   (Stacking note: S2's `pipeline-gating.py` needs the `probe-*` exemption

@@ -6,8 +6,10 @@
 #
 # Host-side requirements (NOT expressible in this file — see README.md
 # "Buildkite runbook"): host-injected values by step key on queue
-# fpc-isolated-secrets, trusted base-revision checkout for the secrets steps,
-# injection withheld for fork builds (+ approval-gated trusted re-runs), and
+# fpc-isolated-secrets, fork builds never trigger on venue pipelines
+# (build_pull_request_forks=false — there is NO base-revision checkout,
+# WAVE-27333), injection withheld for fork builds
+# (+ approval-gated trusted re-runs), and
 # "Cancel intermediate builds" in the pipeline settings (the GHA
 # concurrency/cancel-in-progress equivalent).
 # Retry policy is defined once as &retry-agent-loss on the first step and
@@ -35,9 +37,11 @@
 # runbook — NOT expressible in this file):
 #   - ZERO INJECTION: the host maps no injected values to any probe-* step
 #     key, on any queue, on any build. probe-absence-env self-verifies this.
-#   - BASE-PINNED EXECUTION: the host checks out the trusted base revision
-#     (not the PR head) for the probe steps, so a fork cannot neuter the
-#     detectors it is observed by. R1 fixture (b)/(c) proves the dependency.
+#   - NO FORK BUILDS: fork builds never trigger on venue pipelines
+#     (build_pull_request_forks=false, API-verified) — there is NO
+#     base-revision checkout in the host (WAVE-27333). A fork cannot
+#     neuter the detectors it is observed by. R1 fixture (b)/(c) proves
+#     the fork-trust dependency shape.
 #   - probe-absence-env runs on fpc-isolated-secrets DELIBERATELY: that is the
 #     queue where injection happens, so it is the only queue where asserting
 #     absence is non-vacuous. It is NOT a secret-bearing step (it receives

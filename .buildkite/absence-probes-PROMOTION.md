@@ -18,8 +18,9 @@ fork-shaped builds (KINDs only, never values, everywhere):
   inspector value-shape families (`secret-value`, `nda-term`, `nda-pattern`).
 - `probe-absence-log` — workspace-reachable log/artifact KIND scan.
 
-Probes receive zero injection and execute from base-pinned (not checkout)
-code; both are host controls (README runbook) proven by R1 fixtures, not by
+Probes receive zero injection, and fork builds never trigger on venue
+pipelines (no base-revision checkout exists — WAVE-27333); both are host
+controls (README runbook) proven by R1 fixtures, not by
 files in this repo. Detector tables are vendored into
 `.buildkite/scripts/absence-scanner.mjs` (sync date 2026-10-20); the NAME
 families (`secret-assignment`, `secret-name`) are env-population only after
@@ -29,9 +30,11 @@ measured false positives on file trees — see the scoping note in the scanner.
 
 - [ ] P0 — STACKED. This branch (`feat/absence-probes-r2`) lands AFTER S1/S2
   (`ci/bk-full-parity`, PR #119). Owner: parent lane. Due: at S1/S2 merge.
-- [ ] P1 — HOST CONTROLS LIVE. Base-revision checkout for `probe-*` steps +
-  zero-injection mapping (no values for any probe key) verified by probe
-  receipts on fork builds. Owner: host/parent. Review: 2026-10-27.
+- [ ] P1 — HOST CONTROLS LIVE. Base-revision checkout STRUCK (does not exist
+  in the host, WAVE-27333 — documented instead of built); P1 now verifies
+  (a) fork builds never trigger (provider flags, API-verified on all 12
+  fleet pipelines) + (b) zero-injection mapping (no values for any probe
+  key) by probe receipts. Owner: host/parent. Review: 2026-10-27.
 - [ ] P2 — NDA-TERM CHANNEL. Host mounts a versioned denylist cache the
   probes read via `ABSENCE_PROBE_TERMS_FILE`; until then the family reports
   unscanned (a note in report mode, a fail-closed FAIL in enforcing mode).
