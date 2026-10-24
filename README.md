@@ -102,7 +102,16 @@ pointer target):
     secrets channel carries the list as `GUARD_PRIVATE_REPOS_01.._06`
     (Doppler `wave`/`bkjobs`, granted by step key in the host
     `secrets-allowlist.tsv`); the wrapper assembles them when the full var
-    is unset and fails closed unless all six are present.
+    is unset and fails closed unless all six are present. Pull-request
+    builds do not receive the list. Set the non-secret `WAVE_JOB_GUARD_PR=1`
+    only on those builds. `.buildkite/scripts/guard-content-policy.sh` and
+    `scripts/public-repo-guard/content-policy.sh` then run every rule except
+    private-repo, and only when `BUILDKITE_PULL_REQUEST` is a positive
+    pull-request number. The wrapper passes that flag through and does not
+    pass the list into the policy script. The same flag when
+    `BUILDKITE_PULL_REQUEST` is empty, `false`, or not a number fails closed
+    (exit 2), so a default-branch build cannot drop the rule. With the flag
+    unset, a missing list still fails closed.
 - **Fork trust.** The secrets-queue steps consume host credentials, so the
   host must (a) run them from the **trusted base ref** as a base-branch build
   — re-running the fork build itself keeps fork metadata

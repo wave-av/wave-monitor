@@ -18,6 +18,15 @@
 # takes precedence when set; otherwise all six chunks must be present — a
 # missing chunk fails closed, never silently narrows the rule.
 #
+# PR mode (WAVE-27678): pull-request builds do not receive the list. The
+# non-secret WAVE_JOB_GUARD_PR=1 runs every content-policy rule except
+# private-repo, and only when BUILDKITE_PULL_REQUEST is a positive integer
+# (Buildkite's pull-request number). The flag is passed through to
+# content-policy.sh; the list is not. The same flag when that variable is
+# empty, "false", or any other non-number fails closed (exit 2), so a
+# default-branch build cannot drop the rule. With the flag unset, a missing
+# list still fails closed.
+#
 # GHA apt-installs ripgrep when missing; FPC guests must not assume sudo/apt,
 # so a missing rg fails closed with a clear message instead.
 set -euo pipefail
@@ -32,6 +41,12 @@ _norm_repo() {
   printf '%s' "$1" | tr '[:upper:]' '[:lower:]' | sed -E -e 's#^(https?|ssh|git)://([^/@]+@)?([^/]+)/#\3/#' -e 's#^git@([^:]+):#\1/#' -e 's#/$##' -e 's#\.git$##' | awk -F/ 'NF >= 3 && $1 != "" && $2 != "" && $3 != "" { print }'
 }
 
+# Buildkite sets BUILDKITE_PULL_REQUEST to the pull-request number, or to the
+# string "false". Only a positive decimal integer selects PR mode.
+_guard_is_pr_number() {
+  [[ "${BUILDKITE_PULL_REQUEST:-}" =~ ^[1-9][0-9]*$ ]]
+}
+
 if [ -n "${BUILDKITE_PULL_REQUEST_REPO:-}" ]; then
   _head="$(_norm_repo "$BUILDKITE_PULL_REQUEST_REPO")"
   _pipe="$(_norm_repo "${BUILDKITE_REPO:-}")"
@@ -43,10 +58,28 @@ if [ -n "${BUILDKITE_PULL_REQUEST_REPO:-}" ]; then
   fi
 fi
 
+# Reject a downgrade before any scan. A legal PR-mode build still needs rg
+# below, because every rule except private-repo must actually run.
+if [ "${WAVE_JOB_GUARD_PR:-}" = "1" ] && ! _guard_is_pr_number; then
+  echo "WAVE_JOB_GUARD_PR=1 is set but BUILDKITE_PULL_REQUEST is not a pull-request number — failing closed (private-repo rule must not be skipped)."
+  exit 2
+fi
+
 command -v rg >/dev/null 2>&1 || {
   echo "ripgrep (rg) is required but not installed in the agent image — failing closed."
   exit 2
 }
+if [ "${WAVE_JOB_GUARD_PR:-}" = "1" ]; then
+  echo "guard-content-policy: private-repo rule skipped for PR mode; remaining content-policy rules still run."
+  # content-policy.sh lives outside .buildkite/ and can be edited on a pull
+  # request, so the confidential list must not be in its environment. The
+  # non-secret flag and BUILDKITE_PULL_REQUEST are passed through unchanged.
+  unset GUARD_PRIVATE_REPOS \
+    GUARD_PRIVATE_REPOS_01 GUARD_PRIVATE_REPOS_02 GUARD_PRIVATE_REPOS_03 \
+    GUARD_PRIVATE_REPOS_04 GUARD_PRIVATE_REPOS_05 GUARD_PRIVATE_REPOS_06
+  export WAVE_JOB_GUARD_PR
+  exec bash scripts/public-repo-guard/content-policy.sh .
+fi
 if [ -n "${GUARD_PRIVATE_REPOS+x}" ]; then
   # Set (even to empty): must be non-degenerate, takes precedence. An
   # explicitly empty/whitespace full value fails closed here — it must

@@ -12,6 +12,11 @@
 #
 # Run: bats .buildkite/tests/guard-content-policy-fork.bats
 # (no repo deps; needs bash + git checkout; rg optional — see below)
+#
+# PR mode (WAVE_JOB_GUARD_PR=1) is covered at the bottom: a pull-request
+# number skips only private-repo and passes the flag through; the flag on a
+# non-pull-request build fails closed; a missing list with the flag unset
+# still fails closed.
 
 setup() {
   SCRIPT_DIR="$(cd "$(dirname "$BATS_TEST_FILENAME")" && pwd)"
@@ -23,6 +28,13 @@ setup() {
   # Assembled from fragments so the full fixture token never occurs
   # literally in this tree — the private-repo rule must find zero matches.
   FIXTURE_REPOS="zz-fixture-$(printf '%s' 'no-such-repo-zz')"
+  # Isolate PR-mode inputs from the caller. A token already present in this
+  # tree (used only as a stand-in name, never printed). Sentinel is absent
+  # from the tree and must never appear in output.
+  unset WAVE_JOB_GUARD_PR
+  unset BUILDKITE_PULL_REQUEST
+  HITTING_NAME="WAVE-27030"
+  LIST_SENTINEL="zz-sentinel-$(printf '%s' 'private-list-zz')"
 }
 
 @test "fork PR env refuses with exit 2 before touching secrets (injection unset)" {
@@ -283,4 +295,228 @@ setup() {
     "BUILDKITE_REPO=git://github.com/wave-av/wave-monitor.git" \
     "$SCRIPT"
   [[ "$output" != *"refusing to run"* ]]
+}
+
+# PR mode. The hitting name is a token already in this tree, so a run that
+# still applies private-repo exits 1. The sentinel is not in the tree and
+# must never be printed.
+@test "PR mode on a pull request passes without GUARD_PRIVATE_REPOS" {
+  if ! command -v rg >/dev/null 2>&1; then
+    skip "rg not installed"
+  fi
+  run env -u GUARD_PRIVATE_REPOS -u GUARD_PRIVATE_REPOS_01 -u GUARD_PRIVATE_REPOS_02 \
+    -u GUARD_PRIVATE_REPOS_03 -u GUARD_PRIVATE_REPOS_04 -u GUARD_PRIVATE_REPOS_05 \
+    -u GUARD_PRIVATE_REPOS_06 \
+    WAVE_JOB_GUARD_PR=1 \
+    BUILDKITE_PULL_REQUEST=206 \
+    "BUILDKITE_PULL_REQUEST_REPO=$PIPELINE_REPO" \
+    "BUILDKITE_REPO=$PIPELINE_REPO" \
+    "$SCRIPT"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"guard-content-policy: private-repo rule skipped for PR mode"* ]]
+  [[ "$output" == *"public-repo-guard: private-repo rule skipped for PR mode"* ]]
+  [[ "$output" == *"public-repo-guard: content policy OK"* ]]
+  [[ "$output" != *"failing closed"* ]]
+  [[ "$output" != *"(private-repo)"* ]]
+}
+
+@test "PR mode skips private-repo and does not print the list" {
+  if ! command -v rg >/dev/null 2>&1; then
+    skip "rg not installed"
+  fi
+  run env \
+    -u GUARD_PRIVATE_REPOS_02 -u GUARD_PRIVATE_REPOS_03 -u GUARD_PRIVATE_REPOS_04 \
+    -u GUARD_PRIVATE_REPOS_05 -u GUARD_PRIVATE_REPOS_06 \
+    WAVE_JOB_GUARD_PR=1 \
+    BUILDKITE_PULL_REQUEST=206 \
+    "BUILDKITE_PULL_REQUEST_REPO=$PIPELINE_REPO" \
+    "BUILDKITE_REPO=$PIPELINE_REPO" \
+    "GUARD_PRIVATE_REPOS=$HITTING_NAME" \
+    "GUARD_PRIVATE_REPOS_01=$LIST_SENTINEL" \
+    "$SCRIPT"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"guard-content-policy: private-repo rule skipped for PR mode"* ]]
+  [[ "$output" == *"public-repo-guard: private-repo rule skipped for PR mode"* ]]
+  [[ "$output" == *"public-repo-guard: content policy OK"* ]]
+  [[ "$output" != *"(private-repo)"* ]]
+  [[ "$output" != *"$HITTING_NAME"* ]]
+  [[ "$output" != *"$LIST_SENTINEL"* ]]
+}
+
+@test "WAVE_JOB_GUARD_PR on a main build fails closed" {
+  run env -u BUILDKITE_PULL_REQUEST_REPO -u BUILDKITE_REPO \
+    -u GUARD_PRIVATE_REPOS_01 -u GUARD_PRIVATE_REPOS_02 -u GUARD_PRIVATE_REPOS_03 \
+    -u GUARD_PRIVATE_REPOS_04 -u GUARD_PRIVATE_REPOS_05 -u GUARD_PRIVATE_REPOS_06 \
+    WAVE_JOB_GUARD_PR=1 \
+    BUILDKITE_PULL_REQUEST=false \
+    "GUARD_PRIVATE_REPOS=$HITTING_NAME" \
+    "$SCRIPT"
+  [ "$status" -eq 2 ]
+  [[ "$output" == *"not a pull-request number"* ]]
+  [[ "$output" == *"failing closed"* ]]
+  [[ "$output" == *"must not be skipped"* ]]
+  [[ "$output" != *"private-repo rule skipped"* ]]
+  [[ "$output" != *"content policy OK"* ]]
+  [[ "$output" != *"(private-repo)"* ]]
+  [[ "$output" != *"$HITTING_NAME"* ]]
+}
+
+@test "WAVE_JOB_GUARD_PR with empty BUILDKITE_PULL_REQUEST fails closed" {
+  run env -u GUARD_PRIVATE_REPOS -u GUARD_PRIVATE_REPOS_01 -u GUARD_PRIVATE_REPOS_02 \
+    -u GUARD_PRIVATE_REPOS_03 -u GUARD_PRIVATE_REPOS_04 -u GUARD_PRIVATE_REPOS_05 \
+    -u GUARD_PRIVATE_REPOS_06 -u BUILDKITE_PULL_REQUEST_REPO -u BUILDKITE_REPO \
+    WAVE_JOB_GUARD_PR=1 \
+    BUILDKITE_PULL_REQUEST= \
+    "$SCRIPT"
+  [ "$status" -eq 2 ]
+  [[ "$output" == *"not a pull-request number"* ]]
+  [[ "$output" != *"missing GUARD_PRIVATE_REPOS"* ]]
+  [[ "$output" != *"private-repo rule skipped"* ]]
+  [[ "$output" != *"content policy OK"* ]]
+}
+
+@test "WAVE_JOB_GUARD_PR rejects zero and non-numeric pull-request values" {
+  local pr
+  for pr in 0 main; do
+    run env -u GUARD_PRIVATE_REPOS -u GUARD_PRIVATE_REPOS_01 -u GUARD_PRIVATE_REPOS_02 \
+      -u GUARD_PRIVATE_REPOS_03 -u GUARD_PRIVATE_REPOS_04 -u GUARD_PRIVATE_REPOS_05 \
+      -u GUARD_PRIVATE_REPOS_06 -u BUILDKITE_PULL_REQUEST_REPO -u BUILDKITE_REPO \
+      WAVE_JOB_GUARD_PR=1 \
+      "BUILDKITE_PULL_REQUEST=$pr" \
+      "$SCRIPT"
+    [ "$status" -eq 2 ]
+    [[ "$output" == *"not a pull-request number"* ]]
+    [[ "$output" != *"private-repo rule skipped"* ]]
+  done
+}
+
+@test "no PR-mode flag and no private-repo list fails closed" {
+  run env -u WAVE_JOB_GUARD_PR -u GUARD_PRIVATE_REPOS -u GUARD_PRIVATE_REPOS_01 \
+    -u GUARD_PRIVATE_REPOS_02 -u GUARD_PRIVATE_REPOS_03 -u GUARD_PRIVATE_REPOS_04 \
+    -u GUARD_PRIVATE_REPOS_05 -u GUARD_PRIVATE_REPOS_06 \
+    -u BUILDKITE_PULL_REQUEST_REPO -u BUILDKITE_REPO \
+    BUILDKITE_PULL_REQUEST=false \
+    "$SCRIPT"
+  [ "$status" -eq 2 ]
+  [[ "$output" == *"missing GUARD_PRIVATE_REPOS_01"* ]]
+  [[ "$output" != *"private-repo rule skipped"* ]]
+  [[ "$output" != *"not a pull-request number"* ]]
+}
+
+@test "default-branch build with the list runs every rule including private-repo" {
+  if ! command -v rg >/dev/null 2>&1; then
+    skip "rg not installed"
+  fi
+  run env -u WAVE_JOB_GUARD_PR -u BUILDKITE_PULL_REQUEST_REPO -u BUILDKITE_REPO \
+    -u GUARD_PRIVATE_REPOS_01 -u GUARD_PRIVATE_REPOS_02 -u GUARD_PRIVATE_REPOS_03 \
+    -u GUARD_PRIVATE_REPOS_04 -u GUARD_PRIVATE_REPOS_05 -u GUARD_PRIVATE_REPOS_06 \
+    BUILDKITE_PULL_REQUEST=false \
+    "GUARD_PRIVATE_REPOS=$HITTING_NAME" \
+    "$SCRIPT"
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"(private-repo)"* ]]
+  [[ "$output" == *"blocking content-policy violation"* ]]
+  [[ "$output" != *"private-repo rule skipped"* ]]
+  [[ "$output" != *"$HITTING_NAME"* ]]
+}
+
+@test "PR mode does not bypass fork refusal" {
+  run env -u GUARD_PRIVATE_REPOS_01 -u GUARD_PRIVATE_REPOS_02 -u GUARD_PRIVATE_REPOS_03 \
+    -u GUARD_PRIVATE_REPOS_04 -u GUARD_PRIVATE_REPOS_05 -u GUARD_PRIVATE_REPOS_06 \
+    WAVE_JOB_GUARD_PR=1 \
+    BUILDKITE_PULL_REQUEST=206 \
+    "GUARD_PRIVATE_REPOS=$HITTING_NAME" \
+    "BUILDKITE_PULL_REQUEST_REPO=$FORK_REPO" \
+    "BUILDKITE_REPO=$PIPELINE_REPO" \
+    "$SCRIPT"
+  [ "$status" -eq 2 ]
+  [[ "$output" == *"refusing to run"* ]]
+  [[ "$output" != *"private-repo rule skipped"* ]]
+  [[ "$output" != *"$HITTING_NAME"* ]]
+}
+
+@test "content-policy PR mode passes without the list" {
+  if ! command -v rg >/dev/null 2>&1; then
+    skip "rg not installed"
+  fi
+  TDIR="$(mktemp -d)"
+  run env -u GUARD_PRIVATE_REPOS -u GUARD_PRIVATE_REPOS_01 -u GUARD_PRIVATE_REPOS_02 \
+    -u GUARD_PRIVATE_REPOS_03 -u GUARD_PRIVATE_REPOS_04 -u GUARD_PRIVATE_REPOS_05 \
+    -u GUARD_PRIVATE_REPOS_06 \
+    WAVE_JOB_GUARD_PR=1 \
+    BUILDKITE_PULL_REQUEST=206 \
+    bash "$POLICY" "$TDIR"
+  rm -rf "$TDIR"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"public-repo-guard: private-repo rule skipped for PR mode"* ]]
+  [[ "$output" == *"content policy OK"* ]]
+  [[ "$output" != *"guard-content-policy:"* ]]
+  [[ "$output" != *"(private-repo)"* ]]
+}
+
+@test "content-policy PR mode skips a hitting list without printing it" {
+  if ! command -v rg >/dev/null 2>&1; then
+    skip "rg not installed"
+  fi
+  TDIR="$(mktemp -d)"
+  printf '%s\n' "$HITTING_NAME" > "$TDIR/note.txt"
+  run env \
+    WAVE_JOB_GUARD_PR=1 \
+    BUILDKITE_PULL_REQUEST=83 \
+    "GUARD_PRIVATE_REPOS=$HITTING_NAME" \
+    "GUARD_PRIVATE_REPOS_01=$LIST_SENTINEL" \
+    bash "$POLICY" "$TDIR"
+  rm -rf "$TDIR"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"public-repo-guard: private-repo rule skipped for PR mode"* ]]
+  [[ "$output" == *"content policy OK"* ]]
+  [[ "$output" != *"(private-repo)"* ]]
+  [[ "$output" != *"$HITTING_NAME"* ]]
+  [[ "$output" != *"$LIST_SENTINEL"* ]]
+}
+
+@test "content-policy flag on a main build fails closed and does not skip" {
+  TDIR="$(mktemp -d)"
+  printf '%s\n' "$HITTING_NAME" > "$TDIR/note.txt"
+  run env \
+    WAVE_JOB_GUARD_PR=1 \
+    BUILDKITE_PULL_REQUEST=false \
+    "GUARD_PRIVATE_REPOS=$HITTING_NAME" \
+    bash "$POLICY" "$TDIR"
+  rm -rf "$TDIR"
+  [ "$status" -eq 2 ]
+  [[ "$output" == *"not a pull-request number"* ]]
+  [[ "$output" == *"must not be skipped"* ]]
+  [[ "$output" != *"private-repo rule skipped"* ]]
+  [[ "$output" != *"content policy OK"* ]]
+  [[ "$output" != *"(private-repo)"* ]]
+  [[ "$output" != *"$HITTING_NAME"* ]]
+}
+
+@test "content-policy flag with empty BUILDKITE_PULL_REQUEST fails closed" {
+  TDIR="$(mktemp -d)"
+  run env -u GUARD_PRIVATE_REPOS \
+    WAVE_JOB_GUARD_PR=1 \
+    BUILDKITE_PULL_REQUEST= \
+    bash "$POLICY" "$TDIR"
+  rm -rf "$TDIR"
+  [ "$status" -eq 2 ]
+  [[ "$output" == *"not a pull-request number"* ]]
+  [[ "$output" != *"content policy OK"* ]]
+  [[ "$output" != *"private-repo rule skipped"* ]]
+}
+
+@test "content-policy without the flag still skips an unset list" {
+  if ! command -v rg >/dev/null 2>&1; then
+    skip "rg not installed"
+  fi
+  TDIR="$(mktemp -d)"
+  run env -u WAVE_JOB_GUARD_PR -u GUARD_PRIVATE_REPOS \
+    BUILDKITE_PULL_REQUEST=false \
+    bash "$POLICY" "$TDIR"
+  rm -rf "$TDIR"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"content policy OK"* ]]
+  [[ "$output" != *"private-repo rule skipped for PR mode"* ]]
+  [[ "$output" != *"failing closed"* ]]
 }

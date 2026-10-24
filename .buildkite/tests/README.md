@@ -4,7 +4,11 @@ Run from the repo root, no repo dependencies:
 
 - S1 fork refusal: `bats .buildkite/tests/guard-content-policy-fork.bats`
   (needs bats; rg optional — without rg the positive controls assert the
-  script reaches the rg-missing fail-closed branch instead of the scan)
+  script reaches the rg-missing fail-closed branch instead of the scan).
+  The same file covers PR mode (`WAVE_JOB_GUARD_PR=1`): a pull-request
+  number skips only the private-repo rule and passes the flag through to
+  the policy script; the flag on a non-pull-request build, and a missing
+  list with the flag unset, both fail closed.
 - S2 guard order + gating proof: `python3 .buildkite/tests/pipeline-gating.py`
   (needs python3 + pyyaml)
 

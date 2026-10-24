@@ -17,7 +17,27 @@ set -uo pipefail
 
 ROOT="${1:-.}"
 cd "$ROOT" || { echo "::error::content-policy: cannot cd to $ROOT"; exit 2; }
+
+# WAVE_JOB_GUARD_PR=1 is the non-secret pull-request signal. Honor it only
+# when BUILDKITE_PULL_REQUEST is a positive integer. Empty, "false", and any
+# other value fail closed before rules run, so a default-branch build cannot
+# skip private-repo. With the flag unset, an unset list still skips the rule
+# (local and direct runs); a set list still runs it.
+if [[ "${WAVE_JOB_GUARD_PR:-}" == "1" ]] && [[ ! "${BUILDKITE_PULL_REQUEST:-}" =~ ^[1-9][0-9]*$ ]]; then
+  echo "::error title=public-repo-guard (pr-mode)::WAVE_JOB_GUARD_PR=1 is set but BUILDKITE_PULL_REQUEST is not a pull-request number — failing closed (private-repo rule must not be skipped)."
+  exit 2
+fi
+
 command -v rg >/dev/null 2>&1 || { echo "::error::content-policy: ripgrep (rg) required"; exit 2; }
+
+_guard_pr_mode=0
+if [[ "${WAVE_JOB_GUARD_PR:-}" == "1" ]]; then
+  _guard_pr_mode=1
+  # Never match or print the confidential list in PR mode.
+  unset GUARD_PRIVATE_REPOS \
+    GUARD_PRIVATE_REPOS_01 GUARD_PRIVATE_REPOS_02 GUARD_PRIVATE_REPOS_03 \
+    GUARD_PRIVATE_REPOS_04 GUARD_PRIVATE_REPOS_05 GUARD_PRIVATE_REPOS_06
+fi
 
 VIOLATIONS=0
 
@@ -97,10 +117,14 @@ check BLOCK abs-user-path    '/(Users|home)/(?!runner/)[a-z][a-z0-9._-]+/'      
 # Private WAVE repo/product names that must never appear in a public tree. The
 # names are NOT hardcoded here (this file is itself public) — they are supplied
 # at run time via GUARD_PRIVATE_REPOS (CI injects it from an org-level Actions
-# variable), comma- or space-separated. UNSET locally → this check is skipped
-# (documented dev behavior). SET but empty/degenerate → fail closed: an
-# explicit empty value must never silently disable the rule.
-if [[ -n "${GUARD_PRIVATE_REPOS+x}" ]]; then
+# variable), comma- or space-separated. With WAVE_JOB_GUARD_PR unset, an unset
+# list skips this check (documented local behavior) and a set but empty or
+# degenerate list fails closed. WAVE_JOB_GUARD_PR=1 on a pull-request number
+# skips this rule only; the list is dropped above and never printed. The same
+# flag off a pull request already exited 2.
+if [[ "$_guard_pr_mode" == "1" ]]; then
+  echo "public-repo-guard: private-repo rule skipped for PR mode; remaining content-policy rules still run."
+elif [[ -n "${GUARD_PRIVATE_REPOS+x}" ]]; then
   # Flatten newlines/CRs first: `read` stops at the first newline, so a
   # multi-line value would silently drop every name after line one. Tabs
   # also separate (repo names never contain them).
