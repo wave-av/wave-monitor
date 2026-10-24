@@ -12,7 +12,8 @@ Run from the repo root, no repo dependencies:
   build, and a missing list with the flag unset, both fail closed.
   PR-mode scans use the default branch's policy and `.guardignore` from a
   throwaway origin repo (WAVE-28333 M1): a no-op PR policy, a PR
-  `.guardignore`, a PR `# guard:allow` marker, or an author-picked base
+  `.guardignore`, a PR `# guard:allow` marker, a PR `.ignore` /
+  `.rgignore` / `.gitignore` at any depth (MF-W1), or an author-picked base
   branch cannot pass a leak; a missing default branch or policy exits 2.
 - Upload selection: `bats .buildkite/tests/upload-pr-pipeline.bats` (needs
   bash + git; pyyaml optional). `upload.sh` compares with the default
