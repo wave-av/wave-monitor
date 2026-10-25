@@ -690,12 +690,18 @@ _leak_line() {
 }
 
 @test "pull-request number check rejects non-ASCII digits" {
-  local pr
-  for pr in "$(printf '\uFF11')" "$(printf '\u0661')"; do
+  local pr loc
+  # Byte-exact FULLWIDTH DIGIT ONE and ARABIC-INDIC DIGIT ONE: printf '\uXXXX'
+  # depends on the running locale. Run the child under en_US.UTF-8, where
+  # [0-9] matches them (C.UTF-8 does not), so LC_ALL=C in the script is what
+  # rejects them.
+  loc="$(locale -a 2>/dev/null | grep -i -m1 -E '^en_US\.utf-?8$')" ||
+    skip "en_US.UTF-8 locale not installed"
+  for pr in $'\xef\xbc\x91' $'\xd9\xa1'; do
     run env -u GUARD_PRIVATE_REPOS -u GUARD_PRIVATE_REPOS_01 -u GUARD_PRIVATE_REPOS_02 \
       -u GUARD_PRIVATE_REPOS_03 -u GUARD_PRIVATE_REPOS_04 -u GUARD_PRIVATE_REPOS_05 \
       -u GUARD_PRIVATE_REPOS_06 -u BUILDKITE_PULL_REQUEST_REPO -u BUILDKITE_REPO \
-      LC_ALL=en_US.utf8 \
+      "LC_ALL=$loc" \
       WAVE_JOB_GUARD_PR=1 \
       "BUILDKITE_PULL_REQUEST=$pr" \
       "$SCRIPT"
@@ -707,6 +713,10 @@ _leak_line() {
 }
 
 @test "no PR-mode flag and no private-repo list fails closed" {
+  # The wrapper checks for rg before it checks the list.
+  if ! command -v rg >/dev/null 2>&1; then
+    skip "rg not installed"
+  fi
   run env -u WAVE_JOB_GUARD_PR -u GUARD_PRIVATE_REPOS -u GUARD_PRIVATE_REPOS_01 \
     -u GUARD_PRIVATE_REPOS_02 -u GUARD_PRIVATE_REPOS_03 -u GUARD_PRIVATE_REPOS_04 \
     -u GUARD_PRIVATE_REPOS_05 -u GUARD_PRIVATE_REPOS_06 \
@@ -870,13 +880,19 @@ _leak_line() {
 }
 
 @test "content-policy pull-request number check rejects non-ASCII digits" {
-  local pr
-  for pr in "$(printf '\uFF11')" "$(printf '\u0661')"; do
+  local pr loc
+  # Byte-exact FULLWIDTH DIGIT ONE and ARABIC-INDIC DIGIT ONE: printf '\uXXXX'
+  # depends on the running locale. Run the child under en_US.UTF-8, where
+  # [0-9] matches them (C.UTF-8 does not), so LC_ALL=C in the script is what
+  # rejects them.
+  loc="$(locale -a 2>/dev/null | grep -i -m1 -E '^en_US\.utf-?8$')" ||
+    skip "en_US.UTF-8 locale not installed"
+  for pr in $'\xef\xbc\x91' $'\xd9\xa1'; do
     TDIR="$(mktemp -d)"
     run env -u GUARD_PRIVATE_REPOS -u GUARD_PRIVATE_REPOS_01 -u GUARD_PRIVATE_REPOS_02 \
       -u GUARD_PRIVATE_REPOS_03 -u GUARD_PRIVATE_REPOS_04 -u GUARD_PRIVATE_REPOS_05 \
       -u GUARD_PRIVATE_REPOS_06 \
-      LC_ALL=en_US.utf8 \
+      "LC_ALL=$loc" \
       WAVE_JOB_GUARD_PR=1 \
       "BUILDKITE_PULL_REQUEST=$pr" \
       bash "$POLICY" "$TDIR"
