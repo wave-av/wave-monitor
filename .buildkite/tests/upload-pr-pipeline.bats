@@ -107,8 +107,8 @@ _upload() {
   [[ "$output" != *"UPLOAD"* ]]
 }
 
-@test "a pipeline.yml without guard-content-policy is never uploaded" {
-  sed -i.bak 's/key: guard-content-policy$/key: something-else/' \
+@test "a pipeline.yml without wm-content-policy is never uploaded" {
+  sed -i.bak 's/key: wm-content-policy$/key: something-else/' \
     "$PRDIR/.buildkite/pipeline.yml"
   rm -f "$PRDIR/.buildkite/pipeline.yml.bak"
   PR=false _upload

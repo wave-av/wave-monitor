@@ -57,11 +57,11 @@ GUARDS="$TMP/guards.json"
 trap 'rm -rf "$TMP"' EXIT
 
 if [ "$IS_PR" = "true" ]; then
-  INJECTED="guard-content-policy:GUARD_PRIVATE_REPOS,governance-enforce:GH_PACKAGES_READ_TOKEN"
+  INJECTED="wm-content-policy:GUARD_PRIVATE_REPOS,governance-enforce:GH_PACKAGES_READ_TOKEN"
   cat >"$STEPS" <<'EOF'
 [
-  {"key": "guard-gitleaks", "queue": "fpc-isolated", "command": ".buildkite/scripts/guard-gitleaks.sh", "exit": 0},
-  {"key": "guard-content-policy", "queue": "fpc-isolated-secrets", "command": ".buildkite/scripts/guard-content-policy.sh", "exit": 0},
+  {"key": "wm-gitleaks", "queue": "fpc-isolated", "command": ".buildkite/scripts/guard-gitleaks.sh", "exit": 0},
+  {"key": "wm-content-policy", "queue": "fpc-isolated-secrets", "command": ".buildkite/scripts/guard-content-policy.sh", "exit": 0},
   {"key": "node-gates", "queue": "fpc-isolated", "command": ".buildkite/scripts/ci.sh", "exit": 0},
   {"key": "foundation-secret-scan", "queue": "fpc-isolated", "command": ".buildkite/scripts/foundation-secret-scan.sh", "exit": 0},
   {"key": "foundation-file-size", "queue": "fpc-isolated", "command": ".buildkite/scripts/foundation-file-size.sh", "exit": 0},
@@ -72,11 +72,11 @@ if [ "$IS_PR" = "true" ]; then
 ]
 EOF
 else
-  INJECTED="guard-content-policy:GUARD_PRIVATE_REPOS"
+  INJECTED="wm-content-policy:GUARD_PRIVATE_REPOS"
   cat >"$STEPS" <<'EOF'
 [
-  {"key": "guard-gitleaks", "queue": "fpc-isolated", "command": ".buildkite/scripts/guard-gitleaks.sh", "exit": 0},
-  {"key": "guard-content-policy", "queue": "fpc-isolated-secrets", "command": ".buildkite/scripts/guard-content-policy.sh", "exit": 0},
+  {"key": "wm-gitleaks", "queue": "fpc-isolated", "command": ".buildkite/scripts/guard-gitleaks.sh", "exit": 0},
+  {"key": "wm-content-policy", "queue": "fpc-isolated-secrets", "command": ".buildkite/scripts/guard-content-policy.sh", "exit": 0},
   {"key": "node-gates", "queue": "fpc-isolated", "command": ".buildkite/scripts/ci.sh", "exit": 0},
   {"key": "foundation-secret-scan", "queue": "fpc-isolated", "command": ".buildkite/scripts/foundation-secret-scan.sh", "exit": 0},
   {"key": "foundation-file-size", "queue": "fpc-isolated", "command": ".buildkite/scripts/foundation-file-size.sh", "exit": 0},
@@ -88,8 +88,8 @@ EOF
 fi
 cat >"$GUARDS" <<'EOF'
 [
-  {"key": "guard-gitleaks", "verdict": "pass", "detail": "exit 0 (build proceeded past wait barrier)"},
-  {"key": "guard-content-policy", "verdict": "pass", "detail": "exit 0 (build proceeded past wait barrier)"}
+  {"key": "wm-gitleaks", "verdict": "pass", "detail": "exit 0 (build proceeded past wait barrier)"},
+  {"key": "wm-content-policy", "verdict": "pass", "detail": "exit 0 (build proceeded past wait barrier)"}
 ]
 EOF
 

@@ -277,7 +277,7 @@ else
     # Whitespace-only counts as missing: the policy splits on whitespace,
     # so a blank chunk would silently narrow the rule.
     if [ -z "$(printf '%s' "${!_v:-}" | tr -d '[:space:]')" ]; then
-      echo "host must inject GUARD_PRIVATE_REPOS (full) or all of GUARD_PRIVATE_REPOS_01.._06 for step key guard-content-policy (missing $_v) — failing closed."
+      echo "host must inject GUARD_PRIVATE_REPOS (full) or all of GUARD_PRIVATE_REPOS_01.._06 for step key wm-content-policy (missing $_v) — failing closed."
       exit 2
     fi
   done

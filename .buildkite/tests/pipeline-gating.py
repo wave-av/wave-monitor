@@ -9,7 +9,7 @@ Checks (all must PASS, exit 0):
   1h. No `group:` nesting — the walk is top-level only (gap 3).
   1i. No plural `commands:` lists — the walk keys on `command` and would
       skip them while BK runs every entry (review).
-  2. The first two COMMAND steps are guard-gitleaks then guard-content-policy,
+  2. The first two COMMAND steps are wm-gitleaks then wm-content-policy,
      with the expected key/command/queue/timeout (the S2 byte-identical move).
   2p. Probe set is empty or exactly the pinned absence-probe trio, preceding
       all gated steps, soft-fail-FLAG-only, commands pinned, never on the
@@ -39,7 +39,7 @@ ROOT = Path(__file__).resolve().parent.parent.parent
 DEFAULT_PIPELINE = ROOT / ".buildkite" / "pipeline.yml"
 
 SECRETS_QUEUE = "fpc-isolated-secrets"
-GUARD_KEYS = ("guard-gitleaks", "guard-content-policy")
+GUARD_KEYS = ("wm-gitleaks", "wm-content-policy")
 # BK pipeline schema attributes that must never appear on a guard step — a
 # guard that can soft-fail, skip, or narrow itself is not a gate.  # guard:allow BK pipeline schema attributes, not repo references
 FORBIDDEN_GUARD_KEYS = ("soft_fail", "allow_failure", "if", "branches", "skip")
@@ -52,14 +52,14 @@ EXPECTED_PROBE_COMMANDS = {
 EXPECTED_GUARDS = (
     {
         "label": ":key: guard gitleaks",
-        "key": "guard-gitleaks",
+        "key": "wm-gitleaks",
         "command": ".buildkite/scripts/guard-gitleaks.sh",
         "queue": "fpc-isolated",
         "timeout_in_minutes": 10,
     },
     {
         "label": ":clipboard: guard content-policy",
-        "key": "guard-content-policy",
+        "key": "wm-content-policy",
         "command": ".buildkite/scripts/guard-content-policy.sh",
         "queue": SECRETS_QUEUE,
         "timeout_in_minutes": 10,
@@ -353,12 +353,12 @@ def selftest():
     RETRY_YAML = ("retry: {automatic: [{exit_status: -1, limit: 1}, "
                   "{signal_reason: agent_stop, limit: 1}], "
                   "manual: {allowed: true, permit_on_passed: false}}")
-    GUARD_A = ("  - label: ':key: guard gitleaks'\n    key: guard-gitleaks\n"
+    GUARD_A = ("  - label: ':key: guard gitleaks'\n    key: wm-gitleaks\n"
                "    command: .buildkite/scripts/guard-gitleaks.sh\n"
                "    agents: {queue: fpc-isolated}\n    timeout_in_minutes: 10\n"  # guard:allow BK agents/queue keywords in synthetic fixture, not a repo reference
                f"    {RETRY_YAML}\n")
     GUARD_B = ("  - label: ':clipboard: guard content-policy'\n"
-               "    key: guard-content-policy\n"
+               "    key: wm-content-policy\n"
                "    command: .buildkite/scripts/guard-content-policy.sh\n"
                "    agents: {queue: fpc-isolated-secrets}\n"  # guard:allow BK agents/queue keywords in synthetic fixture, not a repo reference
                "    timeout_in_minutes: 10\n"
@@ -383,11 +383,11 @@ def selftest():
     t("valid shape ALL PASS", not bad, f"{bad}" if bad else "")
 
     # Gap 1 negatives: escape hatches on guards / waits.
-    rows = _evaluate_yaml(VALID.replace("key: guard-gitleaks\n",
-                                        "key: guard-gitleaks\n    soft_fail: true\n"), FILES)
+    rows = _evaluate_yaml(VALID.replace("key: wm-gitleaks\n",
+                                        "key: wm-gitleaks\n    soft_fail: true\n"), FILES)
     t("gap1 guard soft_fail caught", bool(_failed(rows, "1g")), "")
-    rows = _evaluate_yaml(VALID.replace("key: guard-content-policy\n",
-                                        "key: guard-content-policy\n    branches: main\n"), FILES)
+    rows = _evaluate_yaml(VALID.replace("key: wm-content-policy\n",
+                                        "key: wm-content-policy\n    branches: main\n"), FILES)
     t("gap1 guard branches caught", bool(_failed(rows, "1g")), "")
     rows = _evaluate_yaml(VALID.replace("  - wait: ~\n",
                                         "  - wait: ~\n    continue_on_failure: true\n", 1), FILES)
@@ -400,14 +400,14 @@ def selftest():
     bk = {c["key"]: c for c in cmds}
     job = bk["secret-job"]
     mp = must_pass(doc["steps"], bk, job, "secret-job")
-    t("gap2 continue_on_failure wait drops earlier segment", "guard-gitleaks" not in mp,
+    t("gap2 continue_on_failure wait drops earlier segment", "wm-gitleaks" not in mp,
       f"must={sorted(mp)}")
-    ran, _blocked = simulate(doc["steps"], cmds, bk, "guard-gitleaks")
+    ran, _blocked = simulate(doc["steps"], cmds, bk, "wm-gitleaks")
     t("gap2 failure after soft wait still runs", "secret-job" in ran, f"ran={ran}")
     doc2 = yaml.safe_load(VALID)
     cmds2 = [s for s in doc2["steps"] if isinstance(s, dict) and "command" in s]
     bk2 = {c["key"]: c for c in cmds2}
-    _ran2, blocked2 = simulate(doc2["steps"], cmds2, bk2, "guard-gitleaks")
+    _ran2, blocked2 = simulate(doc2["steps"], cmds2, bk2, "wm-gitleaks")
     t("gap2 bare wait still barriers", "secret-job" in blocked2, "")
 
     # Gap 3 negative: group nesting fails.
@@ -456,7 +456,7 @@ def selftest():
                           "  - label: z\n    key: zed\n    command: .buildkite/scripts/job.sh\n")
     cmds3 = [s for s in doc3["steps"] if isinstance(s, dict) and "command" in s]
     bk3 = {c["key"]: c for c in cmds3}
-    ran3, _b3 = simulate(doc3["steps"], cmds3, bk3, "guard-gitleaks")
+    ran3, _b3 = simulate(doc3["steps"], cmds3, bk3, "wm-gitleaks")
     t("gap5 same-segment step escapes guard failure", "zed" in ran3, f"ran={ran3}")
 
     # Gap 6: unknown key loud; governance failure blocks later steps.

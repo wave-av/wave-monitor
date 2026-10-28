@@ -87,7 +87,7 @@ steps:
     retry: *retry-agent-loss
 
   - label: ":key: guard gitleaks"
-    key: guard-gitleaks
+    key: wm-gitleaks
     command: .buildkite/scripts/guard-gitleaks.sh
     agents:  # guard:allow BK pipeline keyword, not a repo reference
       queue: fpc-isolated
@@ -97,7 +97,7 @@ steps:
   - wait
 
   - label: ":clipboard: guard content-policy"
-    key: guard-content-policy
+    key: wm-content-policy
     command: .buildkite/scripts/guard-content-policy.sh
     agents:  # guard:allow BK pipeline keyword, not a repo reference
       queue: fpc-isolated-secrets
