@@ -51,6 +51,7 @@ steps:
   - label: ":lock: probe absence-env (report mode)"
     key: probe-absence-env
     command: .buildkite/scripts/probe-absence-env.mjs
+    if: 'build.branch == pipeline.default_branch && (build.source == "schedule" || build.source == "webhook" || build.source == "api" || build.source == "ui") && build.pull_request.id == null && build.tag == null'
     agents:  # guard:allow BK pipeline keyword, not a repo reference
       queue: fpc-isolated-secrets
     timeout_in_minutes: 5
@@ -99,12 +100,21 @@ steps:
   - label: ":clipboard: guard content-policy"
     key: guard-content-policy
     command: .buildkite/scripts/guard-content-policy.sh
+    if: 'build.branch == pipeline.default_branch && (build.source == "schedule" || build.source == "webhook" || build.source == "api" || build.source == "ui") && build.pull_request.id == null && build.tag == null'
     agents:  # guard:allow BK pipeline keyword, not a repo reference
       queue: fpc-isolated-secrets
     timeout_in_minutes: 10
     retry: *retry-agent-loss
 
   - wait
+
+  - label: ":shield: secret-queue fence"
+    key: check-secret-queue-fence
+    command: .buildkite/scripts/check-secret-queue-fence.sh
+    agents:  # guard:allow BK pipeline keyword, not a repo reference
+      queue: fpc-isolated
+    timeout_in_minutes: 10
+    retry: *retry-agent-loss
 
   - label: ":test_tube: typecheck + lint + unit tests"
     key: node-gates
@@ -149,7 +159,7 @@ steps:
   - label: ":shield: governance A_BLOCK enforce"
     key: governance-enforce
     command: .buildkite/scripts/governance-enforce.sh
-    if: build.pull_request.id != null
+    if: 'build.branch == pipeline.default_branch && (build.source == "schedule" || build.source == "webhook" || build.source == "api" || build.source == "ui") && build.pull_request.id == null && build.tag == null'
     agents:  # guard:allow BK pipeline keyword, not a repo reference
       queue: fpc-isolated-secrets
     timeout_in_minutes: 10
