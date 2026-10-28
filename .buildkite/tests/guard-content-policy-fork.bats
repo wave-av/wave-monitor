@@ -1105,3 +1105,70 @@ _rgconfig_case() {
   _rgconfig_case glob
   _rgconfig_case ignore-file
 }
+
+# WAVE-29706 (S1 regression, WAVE-26505): a same-repo pull-request build
+# outside PR mode must refuse before the private-repo list is read, even when
+# the host injected the list. Negative tests: PR number, garbage PR value,
+# and the injected list is never printed. Controls: "false" and unset still
+# reach the scan.
+@test "same-repo PR build without PR mode refuses on the secrets path (list injected)" {
+  run env -u WAVE_JOB_GUARD_PR -u GUARD_PRIVATE_REPOS_01 -u GUARD_PRIVATE_REPOS_02 \
+    -u GUARD_PRIVATE_REPOS_03 -u GUARD_PRIVATE_REPOS_04 -u GUARD_PRIVATE_REPOS_05 \
+    -u GUARD_PRIVATE_REPOS_06 \
+    BUILDKITE_PULL_REQUEST=206 \
+    "GUARD_PRIVATE_REPOS=$LIST_SENTINEL" \
+    "BUILDKITE_PULL_REQUEST_REPO=$PIPELINE_REPO" \
+    "BUILDKITE_REPO=$PIPELINE_REPO" \
+    "$SCRIPT"
+  [ "$status" -eq 2 ]
+  [[ "$output" == *"refusing PR/fork code on secrets queue"* ]]
+  [[ "$output" != *"$LIST_SENTINEL"* ]]
+  [[ "$output" != *"public-repo-guard:"* ]]
+  [[ "$output" != *"content policy OK"* ]]
+}
+
+@test "PR build without PR mode refuses with chunks injected and no PR repo vars" {
+  run env -u WAVE_JOB_GUARD_PR -u GUARD_PRIVATE_REPOS \
+    -u BUILDKITE_PULL_REQUEST_REPO -u BUILDKITE_REPO \
+    BUILDKITE_PULL_REQUEST=83 \
+    "GUARD_PRIVATE_REPOS_01=$LIST_SENTINEL" GUARD_PRIVATE_REPOS_02=a \
+    GUARD_PRIVATE_REPOS_03=b GUARD_PRIVATE_REPOS_04=c GUARD_PRIVATE_REPOS_05=d \
+    GUARD_PRIVATE_REPOS_06=e \
+    "$SCRIPT"
+  [ "$status" -eq 2 ]
+  [[ "$output" == *"refusing PR/fork code on secrets queue"* ]]
+  [[ "$output" != *"$LIST_SENTINEL"* ]]
+  [[ "$output" != *"public-repo-guard:"* ]]
+}
+
+@test "non-numeric BUILDKITE_PULL_REQUEST without PR mode refuses (fail closed)" {
+  local val
+  for val in 0 true " " abc "206 "; do
+    run env -u WAVE_JOB_GUARD_PR -u GUARD_PRIVATE_REPOS_01 -u GUARD_PRIVATE_REPOS_02 \
+      -u GUARD_PRIVATE_REPOS_03 -u GUARD_PRIVATE_REPOS_04 -u GUARD_PRIVATE_REPOS_05 \
+      -u GUARD_PRIVATE_REPOS_06 -u BUILDKITE_PULL_REQUEST_REPO -u BUILDKITE_REPO \
+      "BUILDKITE_PULL_REQUEST=$val" \
+      "GUARD_PRIVATE_REPOS=$LIST_SENTINEL" \
+      "$SCRIPT"
+    [ "$status" -eq 2 ]
+    [[ "$output" == *"refusing PR/fork code on secrets queue"* ]]
+    [[ "$output" != *"$LIST_SENTINEL"* ]]
+  done
+}
+
+@test "BUILDKITE_PULL_REQUEST=false or empty still reaches the scan (control)" {
+  if ! command -v rg >/dev/null 2>&1; then
+    skip "rg not installed"
+  fi
+  local val
+  for val in false ""; do
+    run env -u WAVE_JOB_GUARD_PR -u BUILDKITE_PULL_REQUEST_REPO -u BUILDKITE_REPO \
+      -u GUARD_PRIVATE_REPOS_01 -u GUARD_PRIVATE_REPOS_02 -u GUARD_PRIVATE_REPOS_03 \
+      -u GUARD_PRIVATE_REPOS_04 -u GUARD_PRIVATE_REPOS_05 -u GUARD_PRIVATE_REPOS_06 \
+      "BUILDKITE_PULL_REQUEST=$val" \
+      "GUARD_PRIVATE_REPOS=$FIXTURE_REPOS" \
+      "$SCRIPT"
+    [[ "$output" != *"refusing PR/fork code on secrets queue"* ]]
+    [[ "$output" == *"public-repo-guard:"* ]]
+  done
+}
