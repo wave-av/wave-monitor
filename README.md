@@ -89,14 +89,14 @@ those builds: bats, shellcheck, and `guard-content-policy-pr` (see below) on
 (`BUILDKITE_PIPELINE_DEFAULT_BRANCH`), never the pull request's base branch,
 which the author picks; an unset or invalid default branch exits 2.
 `upload.sh` also refuses (exit 2) to upload a pipeline file that lacks its
-content-policy step (`guard-content-policy` in `pipeline.yml`,
+content-policy step (`wm-content-policy` in `pipeline.yml`,
 `guard-content-policy-pr` in the self-check).
 
 Host-side setup (not expressible in `pipeline.yml` — this section is the
 pointer target):
 
 - **Queues.** All steps run on `fpc-isolated`, except `governance-enforce`,
-  `guard-content-policy`, and `probe-absence-env`, which run on
+  `wm-content-policy`, and `probe-absence-env`, which run on
   `fpc-isolated-secrets` (the only queue allowed host-injected values; the
   env probe rides it to assert absence where injection happens).
 - **Host-injected values, by step key** (never inline in the pipeline file;
@@ -104,7 +104,7 @@ pointer target):
   - `governance-enforce`: `GH_PACKAGES_READ_TOKEN` — a token with GH-Packages
     **read** for the `@wave-av` scope (fine-grained PAT or equivalent). The
     script fails closed when it is absent.
-  - `guard-content-policy`: `GUARD_PRIVATE_REPOS` — comma/space-separated
+  - `wm-content-policy`: `GUARD_PRIVATE_REPOS` — comma/space-separated
     private repo/product names for the private-repo rule. The wrapper fails
     closed when it is unset/empty; local callers should run
     `scripts/public-repo-guard/content-policy.sh` directly (rule stays

@@ -13,7 +13,7 @@
 set -eu
 
 pipeline=.buildkite/pipeline.yml
-step=guard-content-policy
+step=wm-content-policy
 pr="${BUILDKITE_PULL_REQUEST:-false}"
 case "$pr" in
   "" | false) ;;

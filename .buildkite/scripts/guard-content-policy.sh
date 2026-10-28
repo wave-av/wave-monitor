@@ -210,6 +210,23 @@ if [ -n "${BUILDKITE_PULL_REQUEST_REPO:-}" ]; then
   fi
 fi
 
+# S1 in-script PR refusal (WAVE-29706, WAVE-26505): a pull-request build
+# outside PR mode would run the full policy, with the host-injected list, from
+# pull-request checkout code. Step conditions are not enough on the
+# fpc-isolated-secrets queue, so refuse any BUILDKITE_PULL_REQUEST other than
+# unset, empty or "false" unless WAVE_JOB_GUARD_PR is set (PR mode, validated
+# below: exactly 1, a real PR number, and no private-repo list). This runs
+# before the list is read; the list is never printed.
+if [ -z "${WAVE_JOB_GUARD_PR:-}" ]; then
+  case "${BUILDKITE_PULL_REQUEST:-false}" in
+    "" | false) ;;
+    *)
+      echo "refusing PR/fork code on secrets queue: BUILDKITE_PULL_REQUEST is not \"false\" and WAVE_JOB_GUARD_PR is unset. Pull requests run guard-content-policy-pr (PR mode, fpc-isolated) instead."
+      exit 2
+      ;;
+  esac
+fi
+
 # Reject a downgrade before any scan. A legal PR-mode build still needs rg
 # below, because every rule except private-repo must actually run.
 # The list check comes first: WAVE_JOB_GUARD_PR=1 plus any list name exits 2
@@ -260,7 +277,7 @@ else
     # Whitespace-only counts as missing: the policy splits on whitespace,
     # so a blank chunk would silently narrow the rule.
     if [ -z "$(printf '%s' "${!_v:-}" | tr -d '[:space:]')" ]; then
-      echo "host must inject GUARD_PRIVATE_REPOS (full) or all of GUARD_PRIVATE_REPOS_01.._06 for step key guard-content-policy (missing $_v) — failing closed."
+      echo "host must inject GUARD_PRIVATE_REPOS (full) or all of GUARD_PRIVATE_REPOS_01.._06 for step key wm-content-policy (missing $_v) — failing closed."
       exit 2
     fi
   done
