@@ -191,11 +191,10 @@ steps:
   # governance-enforce is MAIN-ONLY (fleet main-only governance policy): its
   # script installs @wave-av/governance with a host-injected credential, so it
   # may only run where secrets may be injected — a non-PR build of the default
-  # branch. There it has
-  # no PR base and scans the full tree. Pull requests do not run it on Buildkite
-  # (GHA governance-enforce.yml still runs on PRs); a secret-free PR variant waits
-  # on the localhost package proxy. The host allowlist must grant this step a
-  # main-only row before main can pass it.
+  # branch, where it has no PR base and scans the full tree. Pull requests do
+  # not run governance on Buildkite (GHA governance-enforce.yml still runs on
+  # PRs). The token-free route via the loopback registry proxy is tracked in
+  # WAVE-30138 (draft PR #146).
   - label: ":shield: governance A_BLOCK enforce (default branch)"
     key: governance-enforce
     command: .buildkite/scripts/governance-enforce.sh
