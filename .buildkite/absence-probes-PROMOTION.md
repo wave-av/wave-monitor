@@ -1,9 +1,11 @@
 # R2 absence probes — promotion plan (WAVE-26519, epic WAVE-26503)
 
-Status as of 2026-10-20: REPORT MODE. The three `probe-*` steps in
-`.buildkite/pipeline.yml` soft-fail FLAG (exit 1) only: a FLAG annotates the
-build but never breaks it, while internal errors (exit 2) still fail it.
-This file is the dated plan to build-failing mode (acceptance criterion 5).
+Status as of 2026-10-28: REPORT MODE. Every `probe-*` step in
+`.buildkite/pipeline.yml` (`probe-absence-env`, `probe-absence-env-pr`,
+`probe-absence-fs`, `probe-absence-log`) soft-fails FLAG (exit 1) only: a FLAG
+annotates the build but never breaks it, while internal errors (exit 2) still
+fail it. This file is the dated plan to build-failing mode (acceptance
+criterion 5).
 
 ## What the probes are
 
@@ -11,9 +13,14 @@ Fail-closed detectors asserting no secret material is observable in
 fork-shaped builds (KINDs only, never values, everywhere):
 
 - `probe-absence-env` — zero-injection allowlist assertion on env NAMES.
-  Runs on `fpc-isolated-secrets` with NOTHING mapped to its step key: the
-  secrets queue is where injection happens, so it is the only queue where
-  asserting absence is non-vacuous.
+  Runs on `fpc-isolated-secrets` only when the build is not a pull request
+  and the branch is the pipeline default, with NOTHING mapped to its step
+  key: the secrets queue is where injection happens, so it is the only queue
+  where asserting absence is non-vacuous. A pull-request check alone is not
+  enough, because a branch push is not a pull request.
+- `probe-absence-env-pr` — the same script on `fpc-isolated` for every other
+  build (pull requests and other branches). It must not target the secrets
+  queue. Absence there does not observe secrets-queue injection.
 - `probe-absence-fs` — workspace + tmp + npm-cache scan with the vendored
   inspector value-shape families (`secret-value`, `nda-term`, `nda-pattern`).
 - `probe-absence-log` — workspace-reachable log/artifact KIND scan.
@@ -51,14 +58,21 @@ measured false positives on file trees — see the scoping note in the scanner.
   zero-injection BY CONSTRUCTION — the host maps nothing to `probe-*` keys
   and probe-env self-verifies every run. Exempt `probe-*` keys from the
   secret-bearing set (one-line heuristic change, owned by the S1/S2 lane).
+  The secrets-queue exemption is `probe-absence-env` only, and only when its
+  `if` requires both `build.pull_request.id == null` and
+  `build.branch == pipeline.default_branch`. `probe-absence-env-pr` is not
+  part of that exemption: it runs on `fpc-isolated` and a secrets-queue
+  target for that key fails the gating test.
   Due: at stack time, before the stacked pipeline merges.
 
 ## The flip
 
 When P0–P4 are all closed AND the probes have 7 consecutive green cycles
-(real builds + R1 rig runs; FLAGs only on true positives): delete the three
-`soft_fail` blocks in `.buildkite/pipeline.yml` (one commit). No script
-change needed — the probes already exit 1 on FLAG, 2 on internal error.
+(real builds + R1 rig runs; FLAGs only on true positives): delete the
+`soft_fail` blocks of the four `probe-*` steps in `.buildkite/pipeline.yml`
+(one commit) and narrow `REPORT_MODE_PROBES` in
+`.buildkite/tests/pipeline-gating.py` to match. No script change needed —
+the probes already exit 1 on FLAG, 2 on internal error.
 Earliest flip: 2026-10-27 (P1 review). Hard backstop: the flip rides with the
 S4 re-verdict — per-case OKs stay until S4 is all-PASS either way, so probes
 failing earlier than S4 is allowed but not required.

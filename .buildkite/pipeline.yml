@@ -6,7 +6,12 @@
 #
 # Host-side requirements (NOT expressible in this file — see README.md
 # "Buildkite runbook"): host-injected values by step key on queue
-# fpc-isolated-secrets, fork builds never trigger on venue pipelines
+# fpc-isolated-secrets. Every step on that queue (probe-absence-env,
+# guard-content-policy, governance-enforce) takes it only for a
+# non-pull-request build of the pipeline default branch: pull-request
+# builds never get secrets (WAVE-30137). The host also refuses
+# pull-request jobs on that queue; that refusal is the control and this
+# file is defence in depth. Fork builds never trigger on venue pipelines
 # (build_pull_request_forks=false — there is NO base-revision checkout,
 # WAVE-27333), injection withheld for fork builds
 # (+ approval-gated trusted re-runs), and
@@ -15,23 +20,22 @@
 # Retry policy is defined once as &retry-agent-loss on the first step and
 # reused via *retry-agent-loss so steps cannot drift apart.
 #
-# Ordering is load-bearing (WAVE-26506): after the three UNGATED R2 absence
-# probes (report mode, soft_fail — they must run even when guards fail, and
-# the fork-refusing content-policy guard would otherwise shadow them on
-# exactly the fork builds they watch), the two leak guards come next, each
-# followed by a `wait` barrier, so every secret-bearing step (queue
-# fpc-isolated-secrets) topologically depends on BOTH guards — positions
-# alone gate nothing. Probes bear no secrets (zero injection, self-verified)
-# and are exempt from the guard-gating checks (PROMOTION.md P4). Do not
-# remove a barrier or move a secrets step above one without updating
+# Ordering is load-bearing (WAVE-26506): after the UNGATED absence probes
+# (they must run even when guards fail, and the fork-refusing content-policy
+# guard would otherwise shadow them on exactly the fork builds they watch),
+# the two leak guards come next, each followed by a `wait` barrier, so every
+# secret-bearing step (queue fpc-isolated-secrets) topologically depends on
+# BOTH guards — positions alone gate nothing. All absence probes stay in
+# report mode (soft_fail on FLAG). Probes bear no secrets (zero injection,
+# self-verified) and are exempt from the guard-gating checks (PROMOTION.md
+# P4). Do not remove a barrier or move a secrets step above one without updating
 # .buildkite/tests/pipeline-gating.py.
 #
 # R2 absence probes (WAVE-26519, epic WAVE-26503) — REPORT MODE (2026-10-20):
-# the three probe-* steps run on every build soft-failing FLAG (exit 1) only, so
-# a FLAG annotates but never breaks the build while internal errors (exit 2)
-# still fail it. Promotion to build-failing follows the dated plan in
-# .buildkite/absence-probes-PROMOTION.md; the flip is deleting the three
-# `soft_fail` blocks once its gates hold.
+# every probe-* step soft-fails FLAG (exit 1) only, so a FLAG annotates but
+# never breaks the build while internal errors (exit 2) still fail it.
+# Promotion to build-failing follows .buildkite/absence-probes-PROMOTION.md;
+# the flip is deleting the probe `soft_fail` blocks once its gates hold.
 #
 # Host requirements for the probe steps (see README.md "Absence probes"
 # runbook — NOT expressible in this file):
@@ -42,15 +46,19 @@
 #     base-revision checkout in the host (WAVE-27333). A fork cannot
 #     neuter the detectors it is observed by. R1 fixture (b)/(c) proves
 #     the fork-trust dependency shape.
-#   - probe-absence-env runs on fpc-isolated-secrets DELIBERATELY: that is the
+#   - probe-absence-env runs on fpc-isolated-secrets only when the build is
+#     not a pull request AND the branch is the pipeline default. That is the
 #     queue where injection happens, so it is the only queue where asserting
-#     absence is non-vacuous. It is NOT a secret-bearing step (it receives
-#     nothing) and must run UNGATED — see PROMOTION.md P4 for the gating.py
-#     probe-key exemption this needs on the stacked pipeline.
+#     absence is non-vacuous. The step receives nothing. A pull-request check
+#     alone is not enough: a branch push is not a pull request, and that push
+#     must not land on the secrets queue. Every other build runs the same
+#     script as probe-absence-env-pr on fpc-isolated. The two `if`s partition
+#     builds. Neither step carries depends_on (still ungated — PROMOTION.md P4).
 steps:
-  - label: ":lock: probe absence-env (report mode)"
+  - label: ":lock: probe absence-env (report mode, default branch)"
     key: probe-absence-env
     command: .buildkite/scripts/probe-absence-env.mjs
+    if: "build.pull_request.id == null && build.branch == pipeline.default_branch"
     agents:  # guard:allow BK pipeline keyword, not a repo reference
       queue: fpc-isolated-secrets
     timeout_in_minutes: 5
@@ -65,6 +73,20 @@ steps:
       manual:
         allowed: true
         permit_on_passed: false
+
+  # Same script, no secrets. The key says -pr; the `if` also matches a
+  # non-pull-request build of any other branch, so those builds do not fall
+  # through to the secrets queue. Report mode, like the other probes.
+  - label: ":lock: probe absence-env (report mode, pull request or other branch)"
+    key: probe-absence-env-pr
+    command: .buildkite/scripts/probe-absence-env.mjs
+    if: "build.pull_request.id != null || build.branch != pipeline.default_branch"
+    agents:  # guard:allow BK pipeline keyword, not a repo reference
+      queue: fpc-isolated
+    timeout_in_minutes: 5
+    soft_fail:
+      - exit_status: 1
+    retry: *retry-agent-loss
 
   - label: ":mag: probe absence-fs (report mode)"
     key: probe-absence-fs
@@ -96,9 +118,29 @@ steps:
 
   - wait
 
+  # Pull requests run the same script with no host-injected values.
+  # WAVE_JOB_GUARD_PR is not a secret; the step sets it here. The script
+  # accepts it only on a pull-request build (it exits 2 otherwise), so this
+  # step is pull-request only: a push to another branch runs no
+  # content-policy step (gitleaks and the probes still run), and nothing it
+  # reaches is on the secrets queue. The secrets-queue guard below is the
+  # only one that receives the private-repo list, and only on a
+  # non-pull-request default-branch build.
+  - label: ":clipboard: guard content-policy (pull request)"
+    key: guard-content-policy-pr
+    command: .buildkite/scripts/guard-content-policy.sh
+    if: "build.pull_request.id != null"
+    env:
+      WAVE_JOB_GUARD_PR: "1"
+    agents:  # guard:allow BK pipeline keyword, not a repo reference
+      queue: fpc-isolated
+    timeout_in_minutes: 10
+    retry: *retry-agent-loss
+
   - label: ":clipboard: guard content-policy"
     key: guard-content-policy
     command: .buildkite/scripts/guard-content-policy.sh
+    if: "build.pull_request.id == null && build.branch == pipeline.default_branch"
     agents:  # guard:allow BK pipeline keyword, not a repo reference
       queue: fpc-isolated-secrets
     timeout_in_minutes: 10
@@ -146,10 +188,17 @@ steps:
     timeout_in_minutes: 5
     retry: *retry-agent-loss
 
-  - label: ":shield: governance A_BLOCK enforce"
+  # governance-enforce is MAIN-ONLY (fleet main-only governance policy): its
+  # script installs @wave-av/governance with a host-injected credential, so it
+  # may only run where secrets may be injected — a non-PR build of the default
+  # branch, where it has no PR base and scans the full tree. Pull requests do
+  # not run governance on Buildkite (GHA governance-enforce.yml still runs on
+  # PRs). The token-free route via the loopback registry proxy is tracked in
+  # WAVE-30138 (draft PR #146).
+  - label: ":shield: governance A_BLOCK enforce (default branch)"
     key: governance-enforce
     command: .buildkite/scripts/governance-enforce.sh
-    if: build.pull_request.id != null
+    if: "build.pull_request.id == null && build.branch == pipeline.default_branch"
     agents:  # guard:allow BK pipeline keyword, not a repo reference
       queue: fpc-isolated-secrets
     timeout_in_minutes: 10
