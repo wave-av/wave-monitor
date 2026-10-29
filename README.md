@@ -156,9 +156,15 @@ pointer target):
   non-secret `WAVE_JOB_REGISTRY_PROXY_URL`; only `http://127.0.0.1:<port>/` or
   `http://localhost:<port>/` is accepted). The proxy is read-only, serves the
   `@wave-av` scope only and holds its credential on the host. The job-local
-  npmrc has no auth line, and the script unsets token-shaped variables by
-  name before npm runs. If the proxy is missing or does not serve the pinned
-  version, the step fails closed with exit 2. The repo is public, so it has
+  npmrc has no auth line, and node and npm run under `env -i` with an
+  explicit allowlist (PATH, a job-local HOME/TMPDIR/npm cache, pinned npm
+  config, loopback NO_PROXY, outbound proxy URLs only without userinfo), so
+  no job variable reaches them. The proxy URL is matched as a whole string,
+  so an embedded newline cannot smuggle a second URL. The tarball is fetched
+  from the proxy, checked against the pinned sha512 integrity (and the
+  packument's `dist.integrity`), and installed from the verified local file.
+  If the proxy is missing, does not serve the pinned version, or serves bytes
+  that do not match, the step fails closed with exit 2. The repo is public, so it has
   no secrets-allowlist row for this step.
 - **Fork trust.** The secrets-queue steps consume host credentials, so the
   host must (a) run them from the **trusted base ref** as a base-branch build
