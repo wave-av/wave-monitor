@@ -42,12 +42,17 @@ Checks (all must PASS, exit 0):
   8. When present, governance-enforce runs on fpc-isolated with no step env
      (WAVE-30138): it gets packages through the loopback registry proxy and
      receives no injected value, so it never needs the secrets queue.
+  9. provenance-emit.sh's per-shape manifests (PR, default branch, other
+     branch push) list exactly the command steps that run in that shape
+     (report-mode probes excluded), the guards among them, and injected
+     names only for secrets-queue steps that run.
 
 Run: python3 .buildkite/tests/pipeline-gating.py [--pipeline PATH] [--selftest]
   --selftest runs inline positive+negative fixtures per new assertion (no
   network, tmp dirs only) instead of checking the real pipeline.
   (needs python3 + pyyaml)
 """
+import json
 import re
 import sys
 import tempfile
@@ -297,6 +302,73 @@ def simulate(steps, commands, by_key, failed_key):
             mp = barrier_must_pass(steps, s)
         (blocked if (mp & failed) else ran).append(key)
     return ran, blocked
+
+
+# Build shapes for check 9: (name, is_pull_request, is_default_branch).
+BUILD_SHAPES = (("PR", True, False), ("MAIN", False, True), ("BRANCH", False, False))
+_ATOM_VALUES = {
+    _NON_PR_ATOM: lambda pr, default: not pr,
+    _PR_ATOM: lambda pr, default: pr,
+    _DEFAULT_BRANCH_ATOM: lambda pr, default: default,
+    _OTHER_BRANCH_ATOM: lambda pr, default: not default,
+}
+
+
+def if_holds(expr, pr, default):
+    """Evaluate a flat Buildkite `if` for one build shape. None means the
+    shape is not understood (callers fail closed)."""
+    if expr is None:
+        return True
+    for sep, combine in (("&&", all), ("||", any)):
+        atoms = _condition_atoms(expr, sep)
+        if atoms and all(a in _ATOM_VALUES for a in atoms):
+            return combine(_ATOM_VALUES[a](pr, default) for a in atoms)
+    return None
+
+
+def provenance_manifest_rows(steps, script_text):
+    """Check 9 rows: provenance-emit.sh's per-shape manifests must list
+    exactly the command steps that run in that build shape (report-mode
+    probes excluded, as they soft-fail), the guards among them, and
+    injected names only for secrets-queue steps that run."""
+    rows = []
+    guard_keys = set(GUARD_KEYS) | {"guard-content-policy-pr"}
+    for shape, pr, default in BUILD_SHAPES:
+        expected, unknown = [], []
+        for c in walk_steps(steps):
+            if not isinstance(c, dict) or "command" not in c:
+                continue
+            if c.get("key") in REPORT_MODE_PROBES:
+                continue
+            held = if_holds(c.get("if"), pr, default)
+            if held is None:
+                unknown.append(c.get("key"))
+            elif held:
+                expected.append((c.get("key"), step_queue(c), c.get("command")))
+        m = re.search(rf"<<'{shape}_STEPS'\n(.*?)\n{shape}_STEPS\n", script_text, re.S)
+        g = re.search(rf"<<'{shape}_GUARDS'\n(.*?)\n{shape}_GUARDS\n", script_text, re.S)
+        inj = re.search(rf'^INJECTED_{shape}="([^"]*)"$', script_text, re.M)
+        if unknown or not (m and g and inj):
+            rows.append((f"9 provenance {shape} manifest parses", False,
+                         f"unknown if on {unknown}" if unknown else "heredoc or INJECTED line missing"))
+            continue
+        try:
+            claimed = [(x["key"], x["queue"], x["command"]) for x in json.loads(m.group(1))]
+            claimed_guards = [x["key"] for x in json.loads(g.group(1))]
+        except Exception as exc:  # noqa: BLE001 — malformed manifest fails closed
+            rows.append((f"9 provenance {shape} manifest parses", False, str(exc)))
+            continue
+        rows.append((f"9 provenance {shape} steps match pipeline", claimed == expected,
+                     f"claimed={claimed} expected={expected}" if claimed != expected else ""))
+        want_guards = [k for (k, _q, _c) in expected if k in guard_keys]
+        rows.append((f"9 provenance {shape} guards match pipeline", claimed_guards == want_guards,
+                     f"claimed={claimed_guards} expected={want_guards}" if claimed_guards != want_guards else ""))
+        secret_keys = {k for (k, q, _c) in expected if q == SECRETS_QUEUE}
+        inj_keys = [e.split(":")[0] for e in inj.group(1).split(",") if e]
+        stray = [k for k in inj_keys if k not in secret_keys]
+        rows.append((f"9 provenance {shape} injected only on running secrets steps", not stray,
+                     f"injected for {stray}" if stray else ""))
+    return rows
 
 
 def evaluate(pipeline_path, root):
@@ -566,6 +638,14 @@ def evaluate(pipeline_path, root):
         check("8 governance-enforce runs on fpc-isolated with no step env",
               gq == "fpc-isolated" and not gov_step.get("env"),
               f"queue={gq!r} env_keys={sorted((gov_step.get('env') or {}).keys())}")
+
+    # 9 — provenance manifests match what each build shape runs (WAVE-30137).
+    emit = Path(root) / ".buildkite" / "scripts" / "provenance-emit.sh"
+    if any(isinstance(c, dict) and c.get("key") == "provenance-emit" for c in walk_steps(steps)):
+        text = emit.read_text() if emit.is_file() else ""
+        rows.extend(provenance_manifest_rows(steps, text))
+    else:
+        rows.append(("9 provenance-emit absent — skipped", True, ""))
 
     return rows
 
@@ -862,6 +942,41 @@ def selftest():
     t("governance-enforce on secrets queue fails check 8", bool(_failed(rows, "8 ")), "")
     rows = _evaluate_yaml(base + gov_iso + "    env: {WAVE_JOB_X: '1'}\n", gov_files)
     t("governance-enforce with step env fails check 8", bool(_failed(rows, "8 ")), "")
+
+    # Check 9: provenance manifests per build shape.
+    P_STEPS = yaml.safe_load(
+        "- {key: guard-gitleaks, command: g.sh, agents: {queue: fpc-isolated}}\n"  # guard:allow BK agents/queue keywords in synthetic fixture, not a repo reference
+        f"- {{key: guard-content-policy-pr, command: c.sh, if: '{PR_IF}', agents: {{queue: fpc-isolated}}}}\n"  # guard:allow BK agents/queue keywords in synthetic fixture, not a repo reference
+        f"- {{key: gov, command: v.sh, if: '{CLOSED_IF}', agents: {{queue: fpc-isolated-secrets}}}}\n")  # guard:allow BK agents/queue keywords in synthetic fixture, not a repo reference
+
+    def p_script(pr_steps, main_steps, branch_steps, inj_pr="", inj_main="gov:SOME_NAME"):
+        def j(rows):
+            return json.dumps([{"key": k, "queue": q, "command": c, "exit": 0} for (k, q, c) in rows])
+
+        def gj(rows):
+            return json.dumps([{"key": k, "verdict": "pass"} for (k, _q, _c) in rows
+                               if k.startswith("guard-")])
+        out = f'INJECTED_PR="{inj_pr}"\nINJECTED_MAIN="{inj_main}"\nINJECTED_BRANCH=""\n'
+        for name, rows in (("PR", pr_steps), ("MAIN", main_steps), ("BRANCH", branch_steps)):
+            out += (f"cat <<'{name}_STEPS'\n{j(rows)}\n{name}_STEPS\n"
+                    f"cat <<'{name}_GUARDS'\n{gj(rows)}\n{name}_GUARDS\n")
+        return out
+    GL = ("guard-gitleaks", "fpc-isolated", "g.sh")
+    CP = ("guard-content-policy-pr", "fpc-isolated", "c.sh")
+    GV = ("gov", "fpc-isolated-secrets", "v.sh")
+    good = p_script([GL, CP], [GL, GV], [GL])
+    t("check 9 matching manifests pass",
+      all(ok for (_n, ok, _d) in provenance_manifest_rows(P_STEPS, good)), "")
+    for label, script in (
+            ("PR manifest claiming main-only governance", p_script([GL, CP, GV], [GL, GV], [GL])),
+            ("branch-push manifest claiming PR guard", p_script([GL, CP], [GL, GV], [GL, CP])),
+            ("main manifest missing governance", p_script([GL, CP], [GL], [GL])),
+            ("PR manifest injecting a secret", p_script([GL, CP], [GL, GV], [GL], inj_pr="gov:SOME_NAME")),
+            ("main injecting for a non-secrets step",
+             p_script([GL, CP], [GL, GV], [GL], inj_main="guard-gitleaks:SOME_NAME")),
+            ("missing heredoc", good.replace("BRANCH_STEPS", "OTHER_STEPS"))):
+        t(f"check 9 {label} rejected",
+          not all(ok for (_n, ok, _d) in provenance_manifest_rows(P_STEPS, script)), "")
 
     print("SELFTEST " + ("ALL PASS" if not fails else f"{len(fails)} FAILURES: {fails}"))
     return 1 if fails else 0
