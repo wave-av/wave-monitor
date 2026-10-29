@@ -2,9 +2,8 @@
 # FPC agents run --no-command-eval: the pipeline-upload step must be a repo  # guard:allow BK pipeline keyword, not a repo reference
 # script, never an inline command.
 #
-# Pull requests that change .buildkite/ do not receive WAVE_REGISTRY_READ_TOKEN.
-# The full pipeline cannot run there: governance-enforce.sh installs from the
-# private package registry. Those builds upload the secret-free self-check,
+# Pull requests that change .buildkite/ run the secret-free self-check, not the
+# full pipeline, so a PR cannot change the steps that judge it. Those builds upload it,
 # which carries the PR content-policy step (WAVE-28333 M1).
 # The comparison is against the pipeline's default branch
 # (BUILDKITE_PIPELINE_DEFAULT_BRANCH), never BUILDKITE_PULL_REQUEST_BASE_BRANCH:

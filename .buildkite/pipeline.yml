@@ -7,7 +7,7 @@
 # Host-side requirements (NOT expressible in this file — see README.md
 # "Buildkite runbook"): host-injected values by step key on queue
 # fpc-isolated-secrets. Every step on that queue (probe-absence-env,
-# guard-content-policy, governance-enforce) takes it only for a
+# guard-content-policy) takes it only for a
 # non-pull-request build of the pipeline default branch: pull-request
 # builds never get secrets (WAVE-30137). The host also refuses
 # pull-request jobs on that queue; that refusal is the control and this
@@ -188,20 +188,18 @@ steps:
     timeout_in_minutes: 5
     retry: *retry-agent-loss
 
-  # governance-enforce is MAIN-ONLY (fleet main-only governance policy): its
-  # script installs @wave-av/governance with a host-injected credential, so it
-  # may only run where secrets may be injected — a non-PR build of the default
-  # branch. There it has
-  # no PR base and scans the full tree. Pull requests do not run it on Buildkite
-  # (GHA governance-enforce.yml still runs on PRs); a secret-free PR variant waits
-  # on the localhost package proxy. The host allowlist must grant this step a
-  # main-only row before main can pass it.
-  - label: ":shield: governance A_BLOCK enforce (default branch)"
+  # governance-enforce receives NO injected values (WAVE-30138). It installs
+  # @wave-av/governance through the host registry proxy on loopback (read-only,
+  # @wave-av scope only, the credential stays on the host), so it runs on
+  # fpc-isolated for every build: pull requests diff against their merge-base,
+  # other builds scan the full tree. wave-monitor is public, so there is no
+  # secrets-allowlist row for this step. If the proxy is missing the script
+  # fails closed (exit 2); no soft_fail.
+  - label: ":shield: governance A_BLOCK enforce"
     key: governance-enforce
     command: .buildkite/scripts/governance-enforce.sh
-    if: "build.pull_request.id == null && build.branch == pipeline.default_branch"
     agents:  # guard:allow BK pipeline keyword, not a repo reference
-      queue: fpc-isolated-secrets
+      queue: fpc-isolated
     timeout_in_minutes: 10
     retry: *retry-agent-loss
 
