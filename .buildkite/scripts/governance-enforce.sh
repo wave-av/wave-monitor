@@ -35,23 +35,49 @@ if [ -n "${BUILDKITE_PULL_REQUEST_REPO:-}" ] && [ -n "${BUILDKITE_REPO:-}" ] \
   exit 2
 fi
 
-# No credential may reach npm from this job. Drop every token- or auth-shaped
-# variable and every npm config override by NAME (values are never read or
-# printed), so npm sees only the job-local npmrc written below.
-while IFS= read -r v; do
-  case "$v" in
-    *TOKEN*|*_AUTH*|*PASSWORD*|*SECRET*|NPM_CONFIG_*|npm_config_*) unset "$v" ;;
-  esac
-done < <(compgen -e)
-
+# Exact match on the whole string, never line-based (a grep over a value with
+# an embedded newline would accept $'http://evil/\nhttp://127.0.0.1:4873/').
+# Anything else fails closed.
 PROXY="${WAVE_JOB_REGISTRY_PROXY_URL:-http://127.0.0.1:4873/}"
-if ! printf '%s' "$PROXY" | grep -Eq '^http://(127\.0\.0\.1|localhost):[0-9]{1,5}/$'; then
+if [[ ! "$PROXY" =~ ^http://(127\.0\.0\.1|localhost):[0-9]{1,5}/$ ]]; then
   echo "governance-enforce: registry proxy URL must be http://127.0.0.1:<port>/ or http://localhost:<port>/ (loopback only) — failing closed."
   exit 2
 fi
-# Loopback traffic must never go through an HTTP proxy.
-export NO_PROXY="127.0.0.1,localhost${NO_PROXY:+,$NO_PROXY}"
-export no_proxy="$NO_PROXY"
+
+# No credential may reach node or npm from this job. Every node/npm call runs
+# under `env -i` with this explicit allowlist (a deny-list by name misses
+# names nobody thought of). Values are never read or printed. HOME and the npm
+# cache are job-local, global and user npm config are pinned, and loopback
+# never goes through an HTTP proxy. Outbound proxy variables pass only when
+# they carry no userinfo (no user:pass@); otherwise they are dropped.
+GOVDIR="$(mktemp -d)"
+trap 'rm -rf "$GOVDIR"' EXIT
+mkdir -p "$GOVDIR/home" "$GOVDIR/tmp" "$GOVDIR/cache" "$GOVDIR/install"
+CLEAN_ENV=(
+  "PATH=${PATH:-/usr/local/bin:/usr/bin:/bin}"
+  "HOME=$GOVDIR/home"
+  "TMPDIR=$GOVDIR/tmp"
+  "LANG=C.UTF-8"
+  "LC_ALL=C.UTF-8"
+  "NO_PROXY=127.0.0.1,localhost"
+  "no_proxy=127.0.0.1,localhost"
+  "NPM_CONFIG_GLOBALCONFIG=/dev/null"
+  "NPM_CONFIG_USERCONFIG=$GOVDIR/install/.npmrc"
+  "NPM_CONFIG_CACHE=$GOVDIR/cache"
+  "NPM_CONFIG_UPDATE_NOTIFIER=false"
+  "NPM_CONFIG_FUND=false"
+  "NPM_CONFIG_AUDIT=false"
+)
+for v in HTTPS_PROXY https_proxy HTTP_PROXY http_proxy; do
+  val="${!v:-}"
+  if [ -n "$val" ] && [[ "$val" =~ ^https?://[A-Za-z0-9.-]+(:[0-9]{1,5})?/?$ ]]; then
+    CLEAN_ENV+=("$v=$val")
+  fi
+done
+if [ -n "${NODE_EXTRA_CA_CERTS:-}" ] && [ -f "$NODE_EXTRA_CA_CERTS" ]; then
+  CLEAN_ENV+=("NODE_EXTRA_CA_CERTS=$NODE_EXTRA_CA_CERTS")
+fi
+run_clean() { env -i "${CLEAN_ENV[@]}" "$@"; }
 
 if [ -n "${BUILDKITE_PULL_REQUEST_BASE_BRANCH:-}" ]; then
   git fetch --quiet --depth 50 origin "$BUILDKITE_PULL_REQUEST_BASE_BRANCH" || \
@@ -76,45 +102,61 @@ else
   echo "warning: indeterminate diff base; scanning full tree (empty-tree base) so no commit is skipped"
 fi
 
-# Exact pin (never a range): every run enforces with the same reviewed
-# implementation. npm verifies the tarball against the registry packument's
-# dist.integrity on fetch, and the registry rejects same-version republishes,
-# so the pin is the integrity anchor — bump it and the assertion together.
+# Exact pin (never a range) plus the tarball's sha512 (SRI). The integrity is
+# the one the fleet registry seed contract records for this version
+# (wave-ci ops/RUN-234-registry-seed.manifest.tsv, row @wave-av/governance
+# 0.4.6, checked there against GitHub Packages' packument). The tarball is
+# fetched from the loopback proxy at a path built here (never a URL taken
+# from the packument), hashed, and installed from the local file only when it
+# matches; the packument's dist.integrity must match too. Bump GOV_VERSION and
+# GOV_INTEGRITY together.
 GOV_VERSION="0.4.6"
-GOVDIR="$(mktemp -d)"
-trap 'rm -rf "$GOVDIR"' EXIT
+GOV_INTEGRITY="sha512-GGSDZ0cD2WM+jukChbCRqoRVbPTNitVOd1tFuIX4F3wL6MxYyFV+aUMwh2G0ZHTVMD4P9VfqGCc1TOrLUDP0bA=="
+GOV_TGZ="$GOVDIR/governance-$GOV_VERSION.tgz"
 
-# Fail closed with a clear message when the proxy is missing or does not serve
-# the pinned version. Prints status only, never the response body.
-if ! PROXY="$PROXY" GOV_VERSION="$GOV_VERSION" node -e '
-  const u = process.env.PROXY + "@wave-av%2fgovernance";
-  const ac = AbortSignal.timeout(10000);
-  fetch(u, { signal: ac, headers: { accept: "application/json" } })
-    .then(async (r) => {
-      if (r.status !== 200) { console.error("proxy answered HTTP " + r.status); process.exit(1); }
-      const doc = await r.json();
-      if (!doc.versions || !doc.versions[process.env.GOV_VERSION]) {
-        console.error("proxy does not serve @wave-av/governance@" + process.env.GOV_VERSION); process.exit(1);
-      }
-    })
-    .catch((e) => { console.error("proxy unreachable: " + (e.cause?.code || e.name)); process.exit(1); });
+# Fail closed with a clear message when the proxy is missing, does not serve
+# the pinned version, or serves bytes that do not match the pin. Prints status
+# only, never a response body.
+if ! run_clean PROXY="$PROXY" GOV_VERSION="$GOV_VERSION" GOV_INTEGRITY="$GOV_INTEGRITY" GOV_TGZ="$GOV_TGZ" node -e '
+  const { createHash } = require("node:crypto");
+  const { writeFileSync } = require("node:fs");
+  const { PROXY, GOV_VERSION, GOV_INTEGRITY, GOV_TGZ } = process.env;
+  const MAX = 64 * 1024 * 1024;
+  const get = (u) => fetch(u, { signal: AbortSignal.timeout(20000), redirect: "error" });
+  const die = (m) => { console.error(m); process.exit(1); };
+  (async () => {
+    const r = await get(PROXY + "@wave-av%2fgovernance");
+    if (r.status !== 200) die("proxy answered HTTP " + r.status + " for the packument");
+    const doc = await r.json();
+    const ver = doc.versions && doc.versions[GOV_VERSION];
+    if (!ver) die("proxy does not serve @wave-av/governance@" + GOV_VERSION);
+    if (!ver.dist || ver.dist.integrity !== GOV_INTEGRITY) die("packument dist.integrity for " + GOV_VERSION + " does not match the pinned sha512");
+    const t = await get(PROXY + "@wave-av/governance/-/governance-" + GOV_VERSION + ".tgz");
+    if (t.status !== 200) die("proxy answered HTTP " + t.status + " for the tarball");
+    const buf = Buffer.from(await t.arrayBuffer());
+    if (buf.length === 0 || buf.length > MAX) die("tarball size out of bounds: " + buf.length);
+    const got = "sha512-" + createHash("sha512").update(buf).digest("base64");
+    if (got !== GOV_INTEGRITY) die("tarball sha512 does not match the pinned integrity");
+    writeFileSync(GOV_TGZ, buf, { mode: 0o600 });
+  })().catch((e) => die("proxy unreachable: " + (e.cause?.code || e.name)));
 '; then
-  echo "governance-enforce: the host registry proxy at $PROXY is missing or not serving @wave-av/governance@$GOV_VERSION — failing closed."
+  echo "governance-enforce: the host registry proxy at $PROXY is missing, not serving @wave-av/governance@$GOV_VERSION, or serving bytes that do not match the pinned sha512 — failing closed."
   echo "This step never falls back to a token or another registry (WAVE-30138). Fix the host proxy, then rebuild."
   exit 2
 fi
 
-# Job-local npmrc: only the @wave-av scope mapping, no auth line. Global and
-# user config are pinned so no host or repo npmrc can add a token or redirect.
-# A private package.json pins npm's local prefix to GOVDIR (otherwise npm may
-# walk up to / and fail).
-printf '@wave-av:registry=%s\n' "$PROXY" > "$GOVDIR/.npmrc"
-printf '{"name":"governance-enforce-job","private":true}\n' > "$GOVDIR/package.json"
-cd "$GOVDIR"
-NPM_CONFIG_GLOBALCONFIG=/dev/null NPM_CONFIG_USERCONFIG="$GOVDIR/.npmrc" \
-  npm install "@wave-av/governance@$GOV_VERSION" --prefix "$GOVDIR" \
+# Job-local npmrc: only the @wave-av scope mapping, no auth line (global and
+# user config are pinned by CLEAN_ENV). A private package.json pins npm's
+# local prefix (otherwise npm may walk up to / and fail). governance is
+# installed from the verified local tarball, never re-fetched.
+printf '@wave-av:registry=%s\n' "$PROXY" > "$GOVDIR/install/.npmrc"
+printf '{"name":"governance-enforce-job","private":true}\n' > "$GOVDIR/install/package.json"
+(
+  cd "$GOVDIR/install"
+  run_clean npm install "$GOV_TGZ" --prefix "$GOVDIR/install" \
     --ignore-scripts --no-save --no-audit --no-fund
-INSTALLED="$(node -p "require('./node_modules/@wave-av/governance/package.json').version")"
-[ "$INSTALLED" = "$GOV_VERSION" ] || { echo "governance version mismatch: installed $INSTALLED, want $GOV_VERSION"; exit 2; }
-cd - >/dev/null
-node "$GOVDIR/node_modules/@wave-av/governance/bin/enforce.mjs" --changed "$BASE"
+)
+GOVPKG="$GOVDIR/install/node_modules/@wave-av/governance"
+INSTALLED="$(run_clean node -p "const p=require(process.argv[1]); p.name + '@' + p.version" "$GOVPKG/package.json")"
+[ "$INSTALLED" = "@wave-av/governance@$GOV_VERSION" ] || { echo "governance package mismatch: installed $INSTALLED, want @wave-av/governance@$GOV_VERSION"; exit 2; }
+run_clean node "$GOVPKG/bin/enforce.mjs" --changed "$BASE"
