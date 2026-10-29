@@ -95,15 +95,12 @@ content-policy step (`guard-content-policy` in `pipeline.yml`,
 Host-side setup (not expressible in `pipeline.yml` — this section is the
 pointer target):
 
-- **Queues.** All steps run on `fpc-isolated`, except `governance-enforce`,
-  `guard-content-policy`, and `probe-absence-env`, which run on
+- **Queues.** All steps run on `fpc-isolated`, except
+  `guard-content-policy` and `probe-absence-env`, which run on
   `fpc-isolated-secrets` (the only queue allowed host-injected values; the
   env probe rides it to assert absence where injection happens).
 - **Host-injected values, by step key** (never inline in the pipeline file;
   each name must be in this repo's `repos.yaml` `secrets` allowlist):
-  - `governance-enforce`: `GH_PACKAGES_READ_TOKEN` — a token with GH-Packages
-    **read** for the `@wave-av` scope (fine-grained PAT or equivalent). The
-    script fails closed when it is absent.
   - `guard-content-policy`: `GUARD_PRIVATE_REPOS` — comma/space-separated
     private repo/product names for the private-repo rule. The wrapper fails
     closed when it is unset/empty; local callers should run
@@ -152,6 +149,17 @@ pointer target):
   step. Closing that needs a host-side anchor (a host-owned uploader or a
   step rendered from host-side CI code) plus a required status check on
   `main` (M2).
+- **Registry proxy (governance-enforce, WAVE-30138).** `governance-enforce`
+  gets no host-injected value and runs on `fpc-isolated` for every build.
+  It installs the pinned `@wave-av/governance` through the host-side registry
+  proxy on loopback (default `http://127.0.0.1:4873/`, override with the
+  non-secret `WAVE_JOB_REGISTRY_PROXY_URL`; only `http://127.0.0.1:<port>/` or
+  `http://localhost:<port>/` is accepted). The proxy is read-only, serves the
+  `@wave-av` scope only and holds its credential on the host. The job-local
+  npmrc has no auth line, and the script unsets token-shaped variables by
+  name before npm runs. If the proxy is missing or does not serve the pinned
+  version, the step fails closed with exit 2. The repo is public, so it has
+  no secrets-allowlist row for this step.
 - **Fork trust.** The secrets-queue steps consume host credentials, so the
   host must (a) run them from the **trusted base ref** as a base-branch build
   — re-running the fork build itself keeps fork metadata
