@@ -3,7 +3,7 @@
 # (SLSA-style, feeds WAVE-26504 Q4 attestation) and upload it as a BK artifact.
 #
 # QUEUE: fpc-isolated. This step receives NO secrets. Secret NAMES below
-# (GUARD_PRIVATE_REPOS, GH_PACKAGES_READ_TOKEN) are name-only claims about
+# (GUARD_PRIVATE_REPOS) are name-only claims about
 # what the host injected into OTHER steps — never values. The vendored emitter
 # enforces UPPER_SNAKE names and fails closed on anything value-shaped.
 #
@@ -14,9 +14,9 @@
 #
 # HONESTY NOTES (v1, all reversible):
 # - The manifest claims exit 0 for every step that ran: this step runs only
-#   when all of them passed. The PR-only governance-enforce step is included
-#   iff BUILDKITE_PULL_REQUEST is a PR number (it is skipped otherwise, and a
-#   skipped step must not be claimed as exited).
+#   when all of them passed. governance-enforce runs on every build on
+#   fpc-isolated with no injected values (WAVE-30138), so it is listed in
+#   both shapes and claims no injected name.
 # - Self (provenance-emit) is listed exit 0: any DELIVERED artifact implies
 #   the emitter + upload both succeeded, so the step exited 0. Local-only
 #   files from failed runs never leave the ephemeral agent.
@@ -57,7 +57,7 @@ GUARDS="$TMP/guards.json"
 trap 'rm -rf "$TMP"' EXIT
 
 if [ "$IS_PR" = "true" ]; then
-  INJECTED="guard-content-policy:GUARD_PRIVATE_REPOS,governance-enforce:GH_PACKAGES_READ_TOKEN"
+  INJECTED="guard-content-policy:GUARD_PRIVATE_REPOS"
   cat >"$STEPS" <<'EOF'
 [
   {"key": "guard-gitleaks", "queue": "fpc-isolated", "command": ".buildkite/scripts/guard-gitleaks.sh", "exit": 0},
@@ -67,7 +67,7 @@ if [ "$IS_PR" = "true" ]; then
   {"key": "foundation-file-size", "queue": "fpc-isolated", "command": ".buildkite/scripts/foundation-file-size.sh", "exit": 0},
   {"key": "foundation-skill-validate", "queue": "fpc-isolated", "command": ".buildkite/scripts/foundation-skill-validate.sh", "exit": 0},
   {"key": "foundation-verify-routes", "queue": "fpc-isolated", "command": ".buildkite/scripts/foundation-verify-routes.sh", "exit": 0},
-  {"key": "governance-enforce", "queue": "fpc-isolated-secrets", "command": ".buildkite/scripts/governance-enforce.sh", "exit": 0},
+  {"key": "governance-enforce", "queue": "fpc-isolated", "command": ".buildkite/scripts/governance-enforce.sh", "exit": 0},
   {"key": "provenance-emit", "queue": "fpc-isolated", "command": ".buildkite/scripts/provenance-emit.sh", "exit": 0}
 ]
 EOF
@@ -82,6 +82,7 @@ else
   {"key": "foundation-file-size", "queue": "fpc-isolated", "command": ".buildkite/scripts/foundation-file-size.sh", "exit": 0},
   {"key": "foundation-skill-validate", "queue": "fpc-isolated", "command": ".buildkite/scripts/foundation-skill-validate.sh", "exit": 0},
   {"key": "foundation-verify-routes", "queue": "fpc-isolated", "command": ".buildkite/scripts/foundation-verify-routes.sh", "exit": 0},
+  {"key": "governance-enforce", "queue": "fpc-isolated", "command": ".buildkite/scripts/governance-enforce.sh", "exit": 0},
   {"key": "provenance-emit", "queue": "fpc-isolated", "command": ".buildkite/scripts/provenance-emit.sh", "exit": 0}
 ]
 EOF
