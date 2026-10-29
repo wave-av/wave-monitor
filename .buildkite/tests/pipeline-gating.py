@@ -12,7 +12,9 @@ Checks (all must PASS, exit 0):
       skip them while BK runs every entry (review).
   2. guard-gitleaks is the first gated step. When guard-content-policy is on
      the secrets queue, guard-content-policy-pr sits between the two guards
-     on fpc-isolated, sets WAVE_JOB_GUARD_PR, and the next step depends on both.
+     on fpc-isolated, sets WAVE_JOB_GUARD_PR, runs on pull-request builds only
+     (`if: build.pull_request.id != null`; the guard accepts the flag only on
+     a pull request), and the next step depends on both.
   2p. Probe set is empty, the pinned trio, or that trio plus probe-absence-env-pr.
       Probes precede gated steps. Every probe is in report mode: it
       soft-fails on FLAG only. probe-absence-env may use the secrets queue
@@ -34,6 +36,9 @@ Checks (all must PASS, exit 0):
      pull request. There is NO exemption: no step on the secrets queue can
      run on a pull-request build (governance-enforce included, main-only
      since WAVE-30137, the fleet main-only governance policy). PR builds never get secrets.
+     The walk covers EVERY step, not only `command` steps: plugin-only,
+     trigger, block/input, `agents` in list form, and steps nested in a
+     `group` (each step's own `if` is checked; check 1h still fails groups).
 
 Run: python3 .buildkite/tests/pipeline-gating.py [--pipeline PATH] [--selftest]
   --selftest runs inline positive+negative fixtures per new assertion (no
@@ -164,6 +169,41 @@ def if_is_pull_request_or_other_branch(expr):
     if atoms is None or len(atoms) != 2:
         return False
     return sorted(atoms) == sorted([_PR_ATOM, _OTHER_BRANCH_ATOM])
+
+
+def if_is_pull_request_only(expr):
+    """True only for `build.pull_request.id != null` on its own.
+
+    guard-content-policy-pr sets WAVE_JOB_GUARD_PR=1, which the guard accepts
+    only on a pull-request build. An `if` that also matches a push to another
+    branch would run it there and fail closed (WAVE-30137 review).
+    """
+    atoms = _condition_atoms(expr, "||")
+    return atoms is not None and atoms == [_PR_ATOM]
+
+
+def step_queue(step):
+    """The agents queue a step targets: `agents: {queue: q}` or
+    `agents: ["queue=q"]`. None when the step names no queue."""
+    agents = step.get("agents") if isinstance(step, dict) else None
+    if isinstance(agents, dict):
+        return agents.get("queue")  # guard:allow BK pipeline keyword, not a repo reference
+    if isinstance(agents, list):
+        for a in agents:
+            if isinstance(a, str) and a.startswith("queue="):
+                return a[len("queue="):]
+    return None
+
+
+def walk_steps(steps):
+    """Every step dict, of any type (command, plugin-only, trigger,
+    block/input, group), including steps nested in a `group`."""
+    for s in steps or []:
+        if not isinstance(s, dict):
+            continue
+        yield s
+        if "group" in s:
+            yield from walk_steps(s.get("steps"))
 
 
 def is_wait(step):
@@ -325,7 +365,7 @@ def evaluate(pipeline_path, root):
               f"got {[c.get('key') for c in commands[:4]]}")
         for p in probes:
             key = p.get("key")
-            queue = (p.get("agents") or {}).get("queue")  # guard:allow BK pipeline keyword, not a repo reference
+            queue = step_queue(p)  # guard:allow BK pipeline keyword, not a repo reference
             if key in REPORT_MODE_PROBES:
                 check(f"2p {key} soft-fails FLAG only, never internal errors",
                       p.get("soft_fail") == [{"exit_status": 1}],
@@ -350,12 +390,12 @@ def evaluate(pipeline_path, root):
             check(f"2p {key} carries no depends_on", "depends_on" not in p,
                   "probe must run ungated")
         env_probe = next((p for p in probes if p.get("key") == "probe-absence-env"), None)
-        if env_probe is not None and (env_probe.get("agents") or {}).get("queue") == SECRETS_QUEUE:  # guard:allow BK pipeline keyword, not a repo reference
+        if env_probe is not None and step_queue(env_probe) == SECRETS_QUEUE:  # guard:allow BK pipeline keyword, not a repo reference
             pr_probe = next((p for p in probes if p.get("key") == "probe-absence-env-pr"), None)
             check("2p probe-absence-env-pr accompanies the secrets env probe", pr_probe is not None,
                   "pull requests and other branches must still run the env probe, off the secrets queue")
             if pr_probe is not None:
-                pr_queue = (pr_probe.get("agents") or {}).get("queue")  # guard:allow BK pipeline keyword, not a repo reference
+                pr_queue = step_queue(pr_probe)  # guard:allow BK pipeline keyword, not a repo reference
                 check("2p probe-absence-env-pr runs on fpc-isolated for other builds",
                       pr_queue == "fpc-isolated"
                       and if_is_pull_request_or_other_branch(pr_probe.get("if"))
@@ -389,23 +429,23 @@ def evaluate(pipeline_path, root):
         for field in ("label", "key", "command", "timeout_in_minutes"):
             check(f"2b {exp['key']}.{field} identical", cmd.get(field) == exp[field],
                   f"got {cmd.get(field)!r}")
-        check(f"2b {exp['key']}.queue identical", (cmd.get("agents") or {}).get("queue") == exp["queue"],  # guard:allow BK pipeline keyword, not a repo reference
+        check(f"2b {exp['key']}.queue identical", step_queue(cmd) == exp["queue"],  # guard:allow BK pipeline keyword, not a repo reference
               f"got {(cmd.get('agents') or {}).get('queue')!r}")  # guard:allow BK pipeline keyword, not a repo reference
         check(f"2c {exp['key']}.retry policy identical", cmd.get("retry") == EXPECTED_RETRY)
 
     secrets_guard = by_gated.get("guard-content-policy")
-    if secrets_guard is not None and (secrets_guard.get("agents") or {}).get("queue") == SECRETS_QUEUE:  # guard:allow BK pipeline keyword, not a repo reference
+    if secrets_guard is not None and step_queue(secrets_guard) == SECRETS_QUEUE:  # guard:allow BK pipeline keyword, not a repo reference
         comp = by_gated.get("guard-content-policy-pr")
         check("2d guard-content-policy-pr present", comp is not None,
-              "pull requests and other branches must run content-policy off the secrets queue")
+              "pull requests must run content-policy off the secrets queue")
         if comp is not None:
             comp_env = comp.get("env") or {}
-            comp_queue = (comp.get("agents") or {}).get("queue")  # guard:allow BK pipeline keyword, not a repo reference
+            comp_queue = step_queue(comp)  # guard:allow BK pipeline keyword, not a repo reference
             hatch = [k for k in ("soft_fail", "allow_failure", "branches", "skip") if k in comp]
             check("2d guard-content-policy-pr is the non-secrets step",
                   comp.get("command") == ".buildkite/scripts/guard-content-policy.sh"
                   and comp_queue == "fpc-isolated"
-                  and if_is_pull_request_or_other_branch(comp.get("if"))
+                  and if_is_pull_request_only(comp.get("if"))
                   and set(comp_env) == {"WAVE_JOB_GUARD_PR"}
                   and comp_env.get("WAVE_JOB_GUARD_PR") == "1"
                   and not hatch
@@ -432,7 +472,7 @@ def evaluate(pipeline_path, root):
                   f"must-pass={sorted(mp)}" if not missing else f"missing {missing}")
 
     # 3 — every secret-bearing step gated on BOTH guards.
-    secret_steps = [c for c in gated if (c.get("agents") or {}).get("queue") == SECRETS_QUEUE]  # guard:allow BK pipeline keyword, not a repo reference
+    secret_steps = [c for c in gated if step_queue(c) == SECRETS_QUEUE]  # guard:allow BK pipeline keyword, not a repo reference
     check("3a secret-bearing steps found", len(secret_steps) >= 1, f"got {len(secret_steps)}")
     for s in secret_steps:
         mp = must_pass(steps, by_key, s, s.get("key"))
@@ -448,7 +488,7 @@ def evaluate(pipeline_path, root):
             check(f"4 failing {gkey} simulated", False, str(exc))
             continue
         leaked = [k for k in ran
-                  if (by_key[k].get("agents") or {}).get("queue") == SECRETS_QUEUE  # guard:allow BK pipeline keyword, not a repo reference
+                  if step_queue(by_key[k]) == SECRETS_QUEUE  # guard:allow BK pipeline keyword, not a repo reference
                   and k != gkey and not k.startswith("probe-")]
         check(f"4 failing {gkey} blocks every secret-bearing step", not leaked,
               f"blocked={blocked}" if not leaked else f"LEAKED={leaked}")
@@ -504,10 +544,13 @@ def evaluate(pipeline_path, root):
     # `build.pull_request.id == null` alone is a failure: that also matches
     # a branch push. No key is exempt: a pull-request build must never be
     # able to select the secrets queue (WAVE-30137).
-    for c in commands:
-        if (c.get("agents") or {}).get("queue") != SECRETS_QUEUE:  # guard:allow BK pipeline keyword, not a repo reference
+    # The walk covers EVERY step, not just `command` steps: plugin-only,
+    # trigger, block/input, and steps nested in a `group` (whose own `if` is
+    # checked; a group-level `if` does not count).
+    for i, c in enumerate(walk_steps(steps)):
+        if step_queue(c) != SECRETS_QUEUE:
             continue
-        key = c.get("key")
+        key = c.get("key") or c.get("label") or f"step#{i}"
         check(f"7 {key} secrets queue requires non-PR and default branch",
               if_requires_non_pr_and_default_branch(c.get("if")),
               f"if={c.get('if')!r}; pull_request.id == null alone is not enough")
@@ -550,10 +593,11 @@ def selftest():
     OPEN_IF = ("build.pull_request.id != null || "
                "build.branch != pipeline.default_branch")
     WEAK_IF = "build.pull_request.id == null"
-    GUARD_B_PR = ("  - label: ':clipboard: guard content-policy (pull request or other branch)'\n"
+    PR_IF = "build.pull_request.id != null"
+    GUARD_B_PR = ("  - label: ':clipboard: guard content-policy (pull request)'\n"
                   "    key: guard-content-policy-pr\n"
                   "    command: .buildkite/scripts/guard-content-policy.sh\n"
-                  f"    if: {OPEN_IF}\n"
+                  f"    if: {PR_IF}\n"
                   "    env: {WAVE_JOB_GUARD_PR: '1'}\n"
                   "    agents: {queue: fpc-isolated}\n"  # guard:allow BK agents/queue keywords in synthetic fixture, not a repo reference
                   "    timeout_in_minutes: 10\n"
@@ -712,8 +756,9 @@ def selftest():
         "key: guard-content-policy\n    command: .buildkite/scripts/guard-content-policy.sh\n",
     ), FILES)
     t("secrets guard with no if is rejected", bool(_failed(rows, "7 guard-content-policy")), "")
-    rows = _evaluate_yaml(VALID.replace(OPEN_IF, "build.pull_request.id != null"), FILES)
-    t("companion if must cover other branches", bool(_failed(rows, "2d guard-content-policy-pr is the non-secrets step")), "")
+    rows = _evaluate_yaml(VALID, FILES)
+    t("companion if pull-request only passes 2d",
+      not _failed(rows, "2d guard-content-policy-pr is the non-secrets step"), "")
     rows = _evaluate_yaml(VALID.replace(
         "key: guard-content-policy-pr\n",
         "key: guard-content-policy-pr\n    soft_fail:\n      - exit_status: 1\n",
@@ -754,6 +799,45 @@ def selftest():
         "key: some-step\n    command: .buildkite/scripts/job.sh\n").replace(
         f"if: {CLOSED_IF}", "if: build.pull_request.id != null"), FILES)
     t("PR-reachable secrets step of any key rejected", bool(_failed(rows, "7 some-step")), "")
+
+    # WAVE-30137 review: the PR-flagged guard twin must be pull-request only.
+    # The open `if` also runs it on branch pushes, where the flag exits 2.
+    rows = _evaluate_yaml(VALID.replace(f"    if: {PR_IF}\n", f"    if: {OPEN_IF}\n"), FILES)
+    t("guard twin with PR-or-other-branch if rejected",
+      bool(_failed(rows, "2d guard-content-policy-pr is the non-secrets step")), "")
+    rows = _evaluate_yaml(VALID.replace(f"    if: {PR_IF}\n", ""), FILES)
+    t("guard twin without if rejected",
+      bool(_failed(rows, "2d guard-content-policy-pr is the non-secrets step")), "")
+
+    # Check 7 walks every step type. A plugin-only step, a trigger, a block,
+    # a step nested in a group, and a list-form `agents` on the secrets queue
+    # with an open `if` all fail; the same shapes with the closed `if` pass.
+    sq = "fpc-isolated-secrets"
+    shapes = {
+        "plugin-only": ("  - label: plug\n    key: plug\n"
+                        "    plugins: [{docker#v5.0.0: {image: alpine}}]\n"
+                        f"    if: {{IF}}\n    agents: {{queue: {sq}}}\n"),  # guard:allow BK agents/queue keywords in synthetic fixture, not a repo reference
+        "group-nested": ("  - group: grp\n    key: grp\n    steps:\n"
+                         "      - label: inner\n        key: inner\n"
+                         "        command: .buildkite/scripts/job.sh\n"
+                         f"        if: {{IF}}\n        agents: {{queue: {sq}}}\n"),  # guard:allow BK agents/queue keywords in synthetic fixture, not a repo reference
+        "trigger": (f"  - trigger: other\n    key: trig\n    if: {{IF}}\n"
+                    f"    agents: {{queue: {sq}}}\n"),  # guard:allow BK agents/queue keywords in synthetic fixture, not a repo reference
+        "block": (f"  - block: hold\n    key: hold\n    if: {{IF}}\n"
+                  f"    agents: {{queue: {sq}}}\n"),  # guard:allow BK agents/queue keywords in synthetic fixture, not a repo reference
+        "agents-list": ("  - label: lst\n    key: lst\n    command: .buildkite/scripts/job.sh\n"
+                        f"    if: {{IF}}\n    agents: [\"queue={sq}\"]\n"),
+    }
+    for name, tmpl in shapes.items():
+        for cond, want_fail in ((OPEN_IF, True), ("build.pull_request.id != null", True),
+                                (CLOSED_IF, False)):
+            doc = base + tmpl.replace("{IF}", cond)
+            rows = _evaluate_yaml(doc, FILES)
+            got = bool(_failed(rows, "7 "))
+            t(f"check 7 {name} secrets step if={cond!r} {'rejected' if want_fail else 'passes'}",
+              got == want_fail, f"{_failed(rows, '7 ')}")
+    rows = _evaluate_yaml(base + shapes["plugin-only"].replace("    if: {IF}\n", ""), FILES)
+    t("check 7 plugin-only secrets step with no if rejected", bool(_failed(rows, "7 ")), "")
 
     print("SELFTEST " + ("ALL PASS" if not fails else f"{len(fails)} FAILURES: {fails}"))
     return 1 if fails else 0

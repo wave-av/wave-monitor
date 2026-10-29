@@ -118,14 +118,18 @@ steps:
 
   - wait
 
-  # Pull requests and every other branch run the same script with no
-  # host-injected values. WAVE_JOB_GUARD_PR is not a secret; the step sets
-  # it here. The secrets-queue guard below is the only one that receives
-  # the private-repo list, and only on a non-pull-request default-branch build.
-  - label: ":clipboard: guard content-policy (pull request or other branch)"
+  # Pull requests run the same script with no host-injected values.
+  # WAVE_JOB_GUARD_PR is not a secret; the step sets it here. The script
+  # accepts it only on a pull-request build (it exits 2 otherwise), so this
+  # step is pull-request only: a push to another branch runs no
+  # content-policy step (gitleaks and the probes still run), and nothing it
+  # reaches is on the secrets queue. The secrets-queue guard below is the
+  # only one that receives the private-repo list, and only on a
+  # non-pull-request default-branch build.
+  - label: ":clipboard: guard content-policy (pull request)"
     key: guard-content-policy-pr
     command: .buildkite/scripts/guard-content-policy.sh
-    if: "build.pull_request.id != null || build.branch != pipeline.default_branch"
+    if: "build.pull_request.id != null"
     env:
       WAVE_JOB_GUARD_PR: "1"
     agents:  # guard:allow BK pipeline keyword, not a repo reference
