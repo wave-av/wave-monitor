@@ -4,16 +4,21 @@ blocks every secret-bearing step in .buildkite/pipeline.yml.
 
 Checks (all must PASS, exit 0):
   1. pipeline.yml parses as YAML with a `steps:` list.
-  1g. Guards carry no soft_fail/allow_failure/if/branches/skip; waits carry
-      no continue_on_failure (WAVE-27331 gap 1).
+  1g. Guards carry no soft_fail/allow_failure/branches/skip; guard-gitleaks
+      also carries no `if`. guard-content-policy's `if` is check 7, not an
+      open escape hatch. Waits carry no continue_on_failure (WAVE-27331 gap 1).
   1h. No `group:` nesting — the walk is top-level only (gap 3).
   1i. No plural `commands:` lists — the walk keys on `command` and would
       skip them while BK runs every entry (review).
-  2. The first two COMMAND steps are guard-gitleaks then guard-content-policy,
-     with the expected key/command/queue/timeout (the S2 byte-identical move).
-  2p. Probe set is empty or exactly the pinned absence-probe trio, preceding
-      all gated steps, soft-fail-FLAG-only, commands pinned, never on the
-      secrets queue except probe-absence-env (P4 PROMOTION.md).
+  2. guard-gitleaks is the first gated step. When guard-content-policy is on
+     the secrets queue, guard-content-policy-pr sits between the two guards
+     on fpc-isolated, sets WAVE_JOB_GUARD_PR, and the next step depends on both.
+  2p. Probe set is empty, the pinned trio, or that trio plus probe-absence-env-pr.
+      Probes precede gated steps. Every probe is in report mode: it
+      soft-fails on FLAG only. probe-absence-env may use the secrets queue
+      only with the check-7 condition, and probe-absence-env-pr runs the same
+      script on fpc-isolated for every other build (P4 PROMOTION.md).
+  2s. soft_fail / allow_failure appear only on the report-mode probes.
   3. Every secret-bearing step (agents.queue == fpc-isolated-secrets) has BOTH  # guard:allow BK pipeline schema attribute, not a repo reference
      guards in its must-pass set under Buildkite wait/depends_on semantics.
      Waits with continue_on_failure:true are NOT barriers (gap 2).
@@ -23,12 +28,19 @@ Checks (all must PASS, exit 0):
      .buildkite/scripts/ with no metacharacters (gap 4).
   6. simulate() fails loudly on unknown keys; when governance-enforce is
      present its failure must block every later step (gap 6).
+  7. Every step on fpc-isolated-secrets has an `if` that requires BOTH
+     build.pull_request.id == null AND build.branch == pipeline.default_branch.
+     `build.pull_request.id == null` alone fails: a branch push is not a
+     pull request. There is NO exemption: no step on the secrets queue can
+     run on a pull-request build (governance-enforce included, main-only
+     since WAVE-30137, the fleet main-only governance policy). PR builds never get secrets.
 
 Run: python3 .buildkite/tests/pipeline-gating.py [--pipeline PATH] [--selftest]
   --selftest runs inline positive+negative fixtures per new assertion (no
   network, tmp dirs only) instead of checking the real pipeline.
   (needs python3 + pyyaml)
 """
+import re
 import sys
 import tempfile
 from pathlib import Path
@@ -42,13 +54,27 @@ SECRETS_QUEUE = "fpc-isolated-secrets"
 GUARD_KEYS = ("guard-gitleaks", "guard-content-policy")
 # BK pipeline schema attributes that must never appear on a guard step — a
 # guard that can soft-fail, skip, or narrow itself is not a gate.  # guard:allow BK pipeline schema attributes, not repo references
-FORBIDDEN_GUARD_KEYS = ("soft_fail", "allow_failure", "if", "branches", "skip")
+# `if` is not in this list: the secrets-queue content-policy guard must
+# carry the closed condition from check 7. guard-gitleaks still rejects `if`.
+FORBIDDEN_GUARD_KEYS = ("soft_fail", "allow_failure", "branches", "skip")
 PINNED_PROBES = ("probe-absence-env", "probe-absence-fs", "probe-absence-log")
+PINNED_PROBES_WITH_PR = PINNED_PROBES + ("probe-absence-env-pr",)
+# Every probe stays in report mode (soft_fail on FLAG only) until the
+# PROMOTION.md flip; the env probe's queue split does not change that.
+REPORT_MODE_PROBES = ("probe-absence-env", "probe-absence-env-pr",
+                      "probe-absence-fs", "probe-absence-log")
 EXPECTED_PROBE_COMMANDS = {
     "probe-absence-env": ".buildkite/scripts/probe-absence-env.mjs",
+    "probe-absence-env-pr": ".buildkite/scripts/probe-absence-env.mjs",
     "probe-absence-fs": ".buildkite/scripts/probe-absence-fs.mjs",
     "probe-absence-log": ".buildkite/scripts/probe-absence-log.mjs",
 }
+# No secrets-queue exemption exists (WAVE-30137): the former pull-request-only
+# governance-enforce exemption let PR builds reach fpc-isolated-secrets.
+_NON_PR_ATOM = "build.pull_request.id==null"
+_DEFAULT_BRANCH_ATOM = "build.branch==pipeline.default_branch"
+_PR_ATOM = "build.pull_request.id!=null"
+_OTHER_BRANCH_ATOM = "build.branch!=pipeline.default_branch"
 EXPECTED_GUARDS = (
     {
         "label": ":key: guard gitleaks",
@@ -73,6 +99,71 @@ EXPECTED_RETRY = {
     ],
     "manual": {"allowed": True, "permit_on_passed": False},
 }
+
+
+def _norm_expr(expr):
+    if not isinstance(expr, str):
+        return ""
+    return re.sub(r"\s+", " ", expr.strip())
+
+
+def _condition_atoms(expr, separator):
+    """Split a Buildkite `if` into clauses, or return None if the shape is not
+    a flat conjunction (`&&`) or disjunction (`||`)."""
+    if not isinstance(expr, str) or not expr.strip():
+        return None
+    if separator not in ("&&", "||"):
+        return None
+    compact = re.sub(r"\s+", "", expr)
+    other = "||" if separator == "&&" else "&&"
+    if other in compact:
+        return None
+    # `!=` is a comparison, not boolean negation. A bare `!` is rejected.
+    if "!" in compact.replace("!=", ""):
+        return None
+    if not re.fullmatch(r"[A-Za-z0-9_.=()&|!]+", compact):
+        return None
+    parts = compact.split(separator)
+    if any(part == "" for part in parts):
+        return None
+    atoms = []
+    for part in parts:
+        atom = part
+        while atom.startswith("(") and atom.endswith(")") and len(atom) >= 2:
+            atom = atom[1:-1]
+        if not atom or "(" in atom or ")" in atom:
+            return None
+        atoms.append(atom)
+    return atoms
+
+
+def if_requires_non_pr_and_default_branch(expr):
+    """True only when `expr` requires both atoms, joined by `&&`:
+
+    - build.pull_request.id == null
+    - build.branch == pipeline.default_branch
+
+    `build.pull_request.id == null` alone is False. That clause also matches
+    a branch push, which is not a pull request, so it must not by itself
+    select the secrets queue. Extra `||` clauses, a missing `if`, and either
+    atom alone are False. Clause order and wrapping parentheses do not matter.
+    """
+    atoms = _condition_atoms(expr, "&&")
+    if atoms is None or len(atoms) != 2:
+        return False
+    return sorted(atoms) == sorted([_NON_PR_ATOM, _DEFAULT_BRANCH_ATOM])
+
+
+def if_is_pull_request_or_other_branch(expr):
+    """True only for the complement: a pull request OR a non-default branch.
+
+    `build.pull_request.id != null` alone is False, because a non-pull-request
+    push of some other branch would then run neither step.
+    """
+    atoms = _condition_atoms(expr, "||")
+    if atoms is None or len(atoms) != 2:
+        return False
+    return sorted(atoms) == sorted([_PR_ATOM, _OTHER_BRANCH_ATOM])
 
 
 def is_wait(step):
@@ -168,8 +259,6 @@ def simulate(steps, commands, by_key, failed_key):
 def evaluate(pipeline_path, root):
     """Run every check against one pipeline file. Returns a list of
     (name, passed, detail) rows; failures is [name for failing rows]."""
-    import re
-
     rows = []
 
     def check(name, cond, detail=""):
@@ -209,6 +298,10 @@ def evaluate(pipeline_path, root):
             check(f"1g {gkey} present", False, "missing guard step")
             continue
         bad = [k for k in FORBIDDEN_GUARD_KEYS if k in g]
+        # gitleaks has no secrets and must run on every build. The
+        # content-policy guard's `if` is the closed secrets-queue condition.
+        if gkey == "guard-gitleaks" and "if" in g:
+            bad.append("if")
         check(f"1g {gkey} carries no escape hatch", not bad, f"has {bad}" if bad else "")
     for i, s in enumerate(steps):
         if isinstance(s, dict) and "wait" in s and s.get("continue_on_failure") is True:
@@ -222,30 +315,77 @@ def evaluate(pipeline_path, root):
     probes = [c for c in commands if (c.get("key") or "").startswith("probe-")]
     gated = [c for c in commands if not (c.get("key") or "").startswith("probe-")]
     probe_keys = sorted(c.get("key") for c in probes)
+    allowed_probe_sets = {tuple(sorted(PINNED_PROBES)), tuple(sorted(PINNED_PROBES_WITH_PR))}
     check("2p probe set empty or exactly the pinned trio",
-          probe_keys == [] or probe_keys == sorted(PINNED_PROBES),
+          probe_keys == [] or tuple(probe_keys) in allowed_probe_sets,
           f"got {probe_keys}")
     if probes:
         check("2p probes precede all gated steps",
               all(commands.index(p) < commands.index(g) for p in probes for g in gated),
               f"got {[c.get('key') for c in commands[:4]]}")
         for p in probes:
-            check(f"2p {p.get('key')} soft-fails FLAG only, never internal errors",
-                  p.get("soft_fail") == [{"exit_status": 1}],
-                  f"got {p.get('soft_fail')!r}")
-            check(f"2p {p.get('key')} command pinned to vendored script",
-                  p.get("command") == EXPECTED_PROBE_COMMANDS.get(p.get("key")),
+            key = p.get("key")
+            queue = (p.get("agents") or {}).get("queue")  # guard:allow BK pipeline keyword, not a repo reference
+            if key in REPORT_MODE_PROBES:
+                check(f"2p {key} soft-fails FLAG only, never internal errors",
+                      p.get("soft_fail") == [{"exit_status": 1}],
+                      f"got {p.get('soft_fail')!r}")
+            else:
+                check(f"2p {key} does not soft-fail",
+                      "soft_fail" not in p and "allow_failure" not in p,
+                      f"got soft_fail={p.get('soft_fail')!r}")
+            check(f"2p {key} command pinned to vendored script",
+                  p.get("command") == EXPECTED_PROBE_COMMANDS.get(key),
                   f"got {p.get('command')!r}")
-            check(f"2p {p.get('key')} never on secrets queue",
-                  p.get("key") == "probe-absence-env" or (p.get("agents") or {}).get("queue") != SECRETS_QUEUE,  # guard:allow BK pipeline keyword, not a repo reference
-                  "only probe-absence-env may ride the secrets queue (it asserts absence there); any other probe-* key would bypass gating")
-            check(f"2p {p.get('key')} carries no depends_on", "depends_on" not in p,
+            if key == "probe-absence-env":
+                check(f"2p {key} secrets queue only with closed if",
+                      queue == SECRETS_QUEUE and if_requires_non_pr_and_default_branch(p.get("if")),  # guard:allow BK pipeline keyword, not a repo reference
+                      f"queue={queue!r} if={p.get('if')!r}")
+                check(f"2p {key} carries no env", "env" not in p,
+                      "the secrets-queue env probe must not extend its own allowlist")
+            else:
+                check(f"2p {key} never on secrets queue",
+                      queue != SECRETS_QUEUE,  # guard:allow BK pipeline keyword, not a repo reference
+                      "only probe-absence-env may ride the secrets queue (it asserts absence there); any other probe-* key would bypass gating")
+            check(f"2p {key} carries no depends_on", "depends_on" not in p,
                   "probe must run ungated")
+        env_probe = next((p for p in probes if p.get("key") == "probe-absence-env"), None)
+        if env_probe is not None and (env_probe.get("agents") or {}).get("queue") == SECRETS_QUEUE:  # guard:allow BK pipeline keyword, not a repo reference
+            pr_probe = next((p for p in probes if p.get("key") == "probe-absence-env-pr"), None)
+            check("2p probe-absence-env-pr accompanies the secrets env probe", pr_probe is not None,
+                  "pull requests and other branches must still run the env probe, off the secrets queue")
+            if pr_probe is not None:
+                pr_queue = (pr_probe.get("agents") or {}).get("queue")  # guard:allow BK pipeline keyword, not a repo reference
+                check("2p probe-absence-env-pr runs on fpc-isolated for other builds",
+                      pr_queue == "fpc-isolated"
+                      and if_is_pull_request_or_other_branch(pr_probe.get("if"))
+                      and pr_probe.get("command") == EXPECTED_PROBE_COMMANDS["probe-absence-env-pr"]
+                      and "env" not in pr_probe
+                      and pr_probe.get("soft_fail") == [{"exit_status": 1}]
+                      and "allow_failure" not in pr_probe,
+                      f"queue={pr_queue!r} if={pr_probe.get('if')!r}")
+
+    # soft_fail is report mode for the absence probes only.
+    for c in commands:
+        if "soft_fail" not in c and c.get("allow_failure") is not True:
+            continue
+        key = c.get("key")
+        check(f"2s {key} soft_fail only on report-mode probes",
+              key in REPORT_MODE_PROBES and c.get("soft_fail") == [{"exit_status": 1}]
+              and "allow_failure" not in c,
+              f"soft_fail={c.get('soft_fail')!r}")
 
     # 2 — guards first (among gated steps), byte-identical fields.
-    first_two = [c.get("key") for c in gated[:2]]
-    check("2a guards are the first two command steps", tuple(first_two) == GUARD_KEYS, f"got {first_two}")
-    for cmd, exp in zip(gated[:2], EXPECTED_GUARDS):
+    gated_keys = [c.get("key") for c in gated]
+    by_gated = {c.get("key"): c for c in gated}
+    check("2a guard-gitleaks is the first gated step",
+          bool(gated_keys) and gated_keys[0] == "guard-gitleaks",
+          f"got {gated_keys[:3]}")
+    for exp in EXPECTED_GUARDS:
+        cmd = by_gated.get(exp["key"])
+        if cmd is None:
+            check(f"2b {exp['key']} present", False, "missing")
+            continue
         for field in ("label", "key", "command", "timeout_in_minutes"):
             check(f"2b {exp['key']}.{field} identical", cmd.get(field) == exp[field],
                   f"got {cmd.get(field)!r}")
@@ -253,7 +393,43 @@ def evaluate(pipeline_path, root):
               f"got {(cmd.get('agents') or {}).get('queue')!r}")  # guard:allow BK pipeline keyword, not a repo reference
         check(f"2c {exp['key']}.retry policy identical", cmd.get("retry") == EXPECTED_RETRY)
 
+    secrets_guard = by_gated.get("guard-content-policy")
+    if secrets_guard is not None and (secrets_guard.get("agents") or {}).get("queue") == SECRETS_QUEUE:  # guard:allow BK pipeline keyword, not a repo reference
+        comp = by_gated.get("guard-content-policy-pr")
+        check("2d guard-content-policy-pr present", comp is not None,
+              "pull requests and other branches must run content-policy off the secrets queue")
+        if comp is not None:
+            comp_env = comp.get("env") or {}
+            comp_queue = (comp.get("agents") or {}).get("queue")  # guard:allow BK pipeline keyword, not a repo reference
+            hatch = [k for k in ("soft_fail", "allow_failure", "branches", "skip") if k in comp]
+            check("2d guard-content-policy-pr is the non-secrets step",
+                  comp.get("command") == ".buildkite/scripts/guard-content-policy.sh"
+                  and comp_queue == "fpc-isolated"
+                  and if_is_pull_request_or_other_branch(comp.get("if"))
+                  and set(comp_env) == {"WAVE_JOB_GUARD_PR"}
+                  and comp_env.get("WAVE_JOB_GUARD_PR") == "1"
+                  and not hatch
+                  and comp.get("timeout_in_minutes") == 10
+                  and comp.get("retry") == EXPECTED_RETRY
+                  and gated_keys[:3] == [
+                      "guard-gitleaks",
+                      "guard-content-policy-pr",
+                      "guard-content-policy",
+                  ],
+                  f"queue={comp_queue!r} if={comp.get('if')!r} env={comp_env!r} "
+                  f"hatch={hatch} order={gated_keys[:3]}")
+
     by_key = {c["key"]: c for c in commands if "key" in c}
+
+    if "guard-content-policy-pr" in by_key and "guard-content-policy" in by_gated:
+        sec_i = gated_keys.index("guard-content-policy")
+        if sec_i + 1 < len(gated_keys):
+            nxt = by_key[gated_keys[sec_i + 1]]
+            mp = must_pass(steps, by_key, nxt, nxt.get("key"))
+            needed = ("guard-gitleaks", "guard-content-policy", "guard-content-policy-pr")
+            missing = [k for k in needed if k not in mp]
+            check("2d later steps depend on both content-policy steps", not missing,
+                  f"must-pass={sorted(mp)}" if not missing else f"missing {missing}")
 
     # 3 — every secret-bearing step gated on BOTH guards.
     secret_steps = [c for c in gated if (c.get("agents") or {}).get("queue") == SECRETS_QUEUE]  # guard:allow BK pipeline keyword, not a repo reference
@@ -324,6 +500,18 @@ def evaluate(pipeline_path, root):
     else:
         rows.append(("6b governance-enforce absent (trivial-tier shape) — skipped", True, ""))
 
+    # 7 — secrets queue admits only a non-PR build of the default branch.
+    # `build.pull_request.id == null` alone is a failure: that also matches
+    # a branch push. No key is exempt: a pull-request build must never be
+    # able to select the secrets queue (WAVE-30137).
+    for c in commands:
+        if (c.get("agents") or {}).get("queue") != SECRETS_QUEUE:  # guard:allow BK pipeline keyword, not a repo reference
+            continue
+        key = c.get("key")
+        check(f"7 {key} secrets queue requires non-PR and default branch",
+              if_requires_non_pr_and_default_branch(c.get("if")),
+              f"if={c.get('if')!r}; pull_request.id == null alone is not enough")
+
     return rows
 
 
@@ -357,17 +545,32 @@ def selftest():
                "    command: .buildkite/scripts/guard-gitleaks.sh\n"
                "    agents: {queue: fpc-isolated}\n    timeout_in_minutes: 10\n"  # guard:allow BK agents/queue keywords in synthetic fixture, not a repo reference
                f"    {RETRY_YAML}\n")
+    CLOSED_IF = ("build.pull_request.id == null && "
+                 "build.branch == pipeline.default_branch")
+    OPEN_IF = ("build.pull_request.id != null || "
+               "build.branch != pipeline.default_branch")
+    WEAK_IF = "build.pull_request.id == null"
+    GUARD_B_PR = ("  - label: ':clipboard: guard content-policy (pull request or other branch)'\n"
+                  "    key: guard-content-policy-pr\n"
+                  "    command: .buildkite/scripts/guard-content-policy.sh\n"
+                  f"    if: {OPEN_IF}\n"
+                  "    env: {WAVE_JOB_GUARD_PR: '1'}\n"
+                  "    agents: {queue: fpc-isolated}\n"  # guard:allow BK agents/queue keywords in synthetic fixture, not a repo reference
+                  "    timeout_in_minutes: 10\n"
+                  f"    {RETRY_YAML}\n")
     GUARD_B = ("  - label: ':clipboard: guard content-policy'\n"
                "    key: guard-content-policy\n"
                "    command: .buildkite/scripts/guard-content-policy.sh\n"
+               f"    if: {CLOSED_IF}\n"
                "    agents: {queue: fpc-isolated-secrets}\n"  # guard:allow BK agents/queue keywords in synthetic fixture, not a repo reference
                "    timeout_in_minutes: 10\n"
                f"    {RETRY_YAML}\n")
     SECRET_JOB = ("  - label: secret job\n    key: secret-job\n"
                   "    command: .buildkite/scripts/job.sh\n"
+                  f"    if: {CLOSED_IF}\n"
                   "    agents: {queue: fpc-isolated-secrets}\n")  # guard:allow BK agents/queue keywords in synthetic fixture, not a repo reference
     FILES = ("guard-gitleaks.sh", "guard-content-policy.sh", "job.sh")
-    VALID = ("steps:\n" + GUARD_A + "  - wait: ~\n" + GUARD_B
+    VALID = ("steps:\n" + GUARD_A + "  - wait: ~\n" + GUARD_B_PR + GUARD_B
              + "  - wait: ~\n" + SECRET_JOB)
 
     fails = []
@@ -476,6 +679,81 @@ def selftest():
     rows = _evaluate_yaml(leak_pipe, FILES)
     t("gap6 governance leak caught", bool(_failed(rows, "6b")), "")
     t("gap6 leak shape keeps 3b green (isolation)", not _failed(rows, "3b"), "")
+
+    # Check 7: both atoms are required. A non-PR clause alone still matches
+    # a branch push and must not select the secrets queue.
+    t("predicate rejects pull_request.id == null alone",
+      not if_requires_non_pr_and_default_branch(WEAK_IF), "")
+    t("predicate rejects default branch alone",
+      not if_requires_non_pr_and_default_branch("build.branch == pipeline.default_branch"), "")
+    t("predicate rejects a disjunction of the two atoms",
+      not if_requires_non_pr_and_default_branch(
+          "build.pull_request.id == null || build.branch == pipeline.default_branch"), "")
+    t("predicate rejects a missing if",
+      not if_requires_non_pr_and_default_branch(None), "")
+    t("predicate accepts both atoms",
+      if_requires_non_pr_and_default_branch(CLOSED_IF), "")
+    t("predicate accepts swapped parenthesized atoms",
+      if_requires_non_pr_and_default_branch(
+          "(build.branch == pipeline.default_branch) && (build.pull_request.id == null)"), "")
+    t("open if is the pull-request or other-branch complement",
+      if_is_pull_request_or_other_branch(OPEN_IF), "")
+    t("open if rejects pull-request clause alone",
+      not if_is_pull_request_or_other_branch("build.pull_request.id != null"), "")
+
+    rows = _evaluate_yaml(VALID.replace(
+        f"key: secret-job\n    command: .buildkite/scripts/job.sh\n    if: {CLOSED_IF}\n",
+        f"key: secret-job\n    command: .buildkite/scripts/job.sh\n    if: {WEAK_IF}\n",
+    ), FILES)
+    t("weak if on a secrets step is rejected", bool(_failed(rows, "7 secret-job")),
+      f"{_failed(rows, '7 ')}")
+    rows = _evaluate_yaml(VALID.replace(
+        f"key: guard-content-policy\n    command: .buildkite/scripts/guard-content-policy.sh\n    if: {CLOSED_IF}\n",
+        "key: guard-content-policy\n    command: .buildkite/scripts/guard-content-policy.sh\n",
+    ), FILES)
+    t("secrets guard with no if is rejected", bool(_failed(rows, "7 guard-content-policy")), "")
+    rows = _evaluate_yaml(VALID.replace(OPEN_IF, "build.pull_request.id != null"), FILES)
+    t("companion if must cover other branches", bool(_failed(rows, "2d guard-content-policy-pr is the non-secrets step")), "")
+    rows = _evaluate_yaml(VALID.replace(
+        "key: guard-content-policy-pr\n",
+        "key: guard-content-policy-pr\n    soft_fail:\n      - exit_status: 1\n",
+    ), FILES)
+    t("companion soft_fail rejected",
+      bool(_failed(rows, "2d guard-content-policy-pr is the non-secrets step"))
+      or bool(_failed(rows, "2s guard-content-policy-pr")), "")
+    rows = _evaluate_yaml(VALID.replace("    env: {WAVE_JOB_GUARD_PR: '1'}\n", ""), FILES)
+    t("companion must set WAVE_JOB_GUARD_PR",
+      bool(_failed(rows, "2d guard-content-policy-pr is the non-secrets step")), "")
+
+    # WAVE-30137: no secrets-queue exemption. The old pull-request-only
+    # governance-enforce shape (PR builds on fpc-isolated-secrets) now fails
+    # check 7; the main-only shape passes.
+    gov_main = ("  - label: gov\n    key: governance-enforce\n"
+                "    command: .buildkite/scripts/governance-enforce.sh\n"
+                f"    if: {CLOSED_IF}\n"
+                "    agents: {queue: fpc-isolated-secrets}\n")  # guard:allow BK agents/queue keywords in synthetic fixture, not a repo reference
+    gov_files = FILES + ("governance-enforce.sh",)
+    base = "steps:\n" + GUARD_A + "  - wait: ~\n" + GUARD_B_PR + GUARD_B + "  - wait: ~\n"
+    rows = _evaluate_yaml(base + gov_main, gov_files)
+    t("main-only governance-enforce on secrets queue passes",
+      not _failed(rows, "7 governance-enforce"), f"{_failed(rows, '7 ')}")
+    for name, cond in (("pull-request-only", "build.pull_request.id != null"),
+                       ("non-PR only", WEAK_IF),
+                       ("pull request or other branch", OPEN_IF)):
+        rows = _evaluate_yaml(base + gov_main.replace(f"if: {CLOSED_IF}", f"if: {cond}"), gov_files)
+        t(f"{name} governance-enforce on secrets queue rejected",
+          bool(_failed(rows, "7 governance-enforce")), "")
+    rows = _evaluate_yaml(base + gov_main.replace(f"    if: {CLOSED_IF}\n", "    branches: main\n"), gov_files)
+    t("branches: main without the if on secrets queue rejected",
+      bool(_failed(rows, "7 governance-enforce")), "")
+
+    # Any step on the secrets queue: no `if` that a pull-request build can
+    # satisfy. Evaluate each secrets step's `if` against a PR build context.
+    rows = _evaluate_yaml(base + gov_main.replace(
+        "key: governance-enforce\n    command: .buildkite/scripts/governance-enforce.sh\n",
+        "key: some-step\n    command: .buildkite/scripts/job.sh\n").replace(
+        f"if: {CLOSED_IF}", "if: build.pull_request.id != null"), FILES)
+    t("PR-reachable secrets step of any key rejected", bool(_failed(rows, "7 some-step")), "")
 
     print("SELFTEST " + ("ALL PASS" if not fails else f"{len(fails)} FAILURES: {fails}"))
     return 1 if fails else 0
