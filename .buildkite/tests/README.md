@@ -19,6 +19,12 @@ Run from the repo root, no repo dependencies:
   bash + git; pyyaml optional). `upload.sh` compares with the default
   branch, fails closed without one, and never uploads a pipeline file that
   lacks its content-policy step.
+- governance-enforce proxy (WAVE-30138):
+  `bats .buildkite/tests/governance-enforce-proxy.bats` (needs bash + git;
+  node + npm for the fake-proxy cases, which skip without them). Covers
+  newline injection and other non-loopback proxy URLs (exit 2 before node
+  runs), packument or tarball sha512 not matching the pin (exit 2, npm never
+  runs), and `env -i`: job variables never reach node (names checked only).
 - S2 guard order + gating proof: `python3 .buildkite/tests/pipeline-gating.py`
   (needs python3 + pyyaml)
 

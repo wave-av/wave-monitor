@@ -3,9 +3,8 @@
 # (SLSA-style, feeds WAVE-26504 Q4 attestation) and upload it as a BK artifact.
 #
 # QUEUE: fpc-isolated. This step receives NO secrets. Secret NAMES below
-# (GUARD_PRIVATE_REPOS, GH_PACKAGES_READ_TOKEN) are name-only claims about
-# what the host injected into OTHER steps on a default-branch build — never
-# values. The vendored emitter enforces UPPER_SNAKE names and fails closed on
+# (GUARD_PRIVATE_REPOS) are name-only claims about what the host injected
+# into OTHER steps on a default-branch build — never values. The vendored emitter enforces UPPER_SNAKE names and fails closed on
 # anything value-shaped.
 #
 # PLACEMENT: final step behind its own `wait` barrier, so it runs only after
@@ -17,14 +16,15 @@
 # - The manifest lists exactly the gated steps that ran in this build's shape
 #   (WAVE-30137), each with exit 0: this step runs only when all of them
 #   passed, and a skipped step must not be claimed as exited.
+#   governance-enforce runs on every build on fpc-isolated with no injected
+#   value (WAVE-30138: loopback registry proxy), so every shape lists it and
+#   no shape claims a name for it.
 #   * pull request (BUILDKITE_PULL_REQUEST is a PR number): the secret-free
-#     guard-content-policy-pr on fpc-isolated; no governance-enforce; nothing
-#     injected.
+#     guard-content-policy-pr on fpc-isolated; nothing injected.
 #   * default branch (not a PR, BUILDKITE_BRANCH equals
-#     BUILDKITE_PIPELINE_DEFAULT_BRANCH): guard-content-policy and
-#     governance-enforce on fpc-isolated-secrets with their injected names.
-#   * any other branch push: no content-policy guard, no governance-enforce,
-#     nothing injected.
+#     BUILDKITE_PIPELINE_DEFAULT_BRANCH): guard-content-policy on
+#     fpc-isolated-secrets with its injected name.
+#   * any other branch push: no content-policy guard; nothing injected.
 #   Anything else (a non-numeric PR value, or an empty branch or default
 #   branch on a non-PR build) fails closed. Report-mode probes soft-fail and
 #   are not claimed. pipeline-gating.py check 9 keeps these manifests equal
@@ -86,7 +86,7 @@ trap 'rm -rf "$TMP"' EXIT
 # INJECTED_<SHAPE> lines and the <<'<SHAPE>_STEPS' / <<'<SHAPE>_GUARDS'
 # heredocs below and compares them with pipeline.yml; keep the layout.
 INJECTED_PR=""
-INJECTED_MAIN="guard-content-policy:GUARD_PRIVATE_REPOS,governance-enforce:GH_PACKAGES_READ_TOKEN"
+INJECTED_MAIN="guard-content-policy:GUARD_PRIVATE_REPOS"
 INJECTED_BRANCH=""
 
 case "$SHAPE" in
@@ -101,6 +101,7 @@ case "$SHAPE" in
   {"key": "foundation-file-size", "queue": "fpc-isolated", "command": ".buildkite/scripts/foundation-file-size.sh", "exit": 0},
   {"key": "foundation-skill-validate", "queue": "fpc-isolated", "command": ".buildkite/scripts/foundation-skill-validate.sh", "exit": 0},
   {"key": "foundation-verify-routes", "queue": "fpc-isolated", "command": ".buildkite/scripts/foundation-verify-routes.sh", "exit": 0},
+  {"key": "governance-enforce", "queue": "fpc-isolated", "command": ".buildkite/scripts/governance-enforce.sh", "exit": 0},
   {"key": "provenance-emit", "queue": "fpc-isolated", "command": ".buildkite/scripts/provenance-emit.sh", "exit": 0}
 ]
 PR_STEPS
@@ -122,7 +123,7 @@ PR_GUARDS
   {"key": "foundation-file-size", "queue": "fpc-isolated", "command": ".buildkite/scripts/foundation-file-size.sh", "exit": 0},
   {"key": "foundation-skill-validate", "queue": "fpc-isolated", "command": ".buildkite/scripts/foundation-skill-validate.sh", "exit": 0},
   {"key": "foundation-verify-routes", "queue": "fpc-isolated", "command": ".buildkite/scripts/foundation-verify-routes.sh", "exit": 0},
-  {"key": "governance-enforce", "queue": "fpc-isolated-secrets", "command": ".buildkite/scripts/governance-enforce.sh", "exit": 0},
+  {"key": "governance-enforce", "queue": "fpc-isolated", "command": ".buildkite/scripts/governance-enforce.sh", "exit": 0},
   {"key": "provenance-emit", "queue": "fpc-isolated", "command": ".buildkite/scripts/provenance-emit.sh", "exit": 0}
 ]
 MAIN_STEPS
@@ -143,6 +144,7 @@ MAIN_GUARDS
   {"key": "foundation-file-size", "queue": "fpc-isolated", "command": ".buildkite/scripts/foundation-file-size.sh", "exit": 0},
   {"key": "foundation-skill-validate", "queue": "fpc-isolated", "command": ".buildkite/scripts/foundation-skill-validate.sh", "exit": 0},
   {"key": "foundation-verify-routes", "queue": "fpc-isolated", "command": ".buildkite/scripts/foundation-verify-routes.sh", "exit": 0},
+  {"key": "governance-enforce", "queue": "fpc-isolated", "command": ".buildkite/scripts/governance-enforce.sh", "exit": 0},
   {"key": "provenance-emit", "queue": "fpc-isolated", "command": ".buildkite/scripts/provenance-emit.sh", "exit": 0}
 ]
 BRANCH_STEPS

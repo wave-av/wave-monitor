@@ -39,6 +39,9 @@ Checks (all must PASS, exit 0):
      The walk covers EVERY step, not only `command` steps: plugin-only,
      trigger, block/input, `agents` in list form, and steps nested in a
      `group` (each step's own `if` is checked; check 1h still fails groups).
+  8. When present, governance-enforce runs on fpc-isolated with no step env
+     (WAVE-30138): it gets packages through the loopback registry proxy and
+     receives no injected value, so it never needs the secrets queue.
   9. provenance-emit.sh's per-shape manifests (PR, default branch, other
      branch push) list exactly the command steps that run in that shape
      (report-mode probes excluded), the guards among them, and injected
@@ -627,6 +630,15 @@ def evaluate(pipeline_path, root):
               if_requires_non_pr_and_default_branch(c.get("if")),
               f"if={c.get('if')!r}; pull_request.id == null alone is not enough")
 
+    # 8 — governance-enforce is secret-free (WAVE-30138): loopback registry
+    # proxy, no injected value, so it must sit on fpc-isolated with no env.
+    gov_step = by_key.get("governance-enforce")
+    if gov_step is not None:
+        gq = step_queue(gov_step)  # guard:allow BK pipeline keyword, not a repo reference
+        check("8 governance-enforce runs on fpc-isolated with no step env",
+              gq == "fpc-isolated" and not gov_step.get("env"),
+              f"queue={gq!r} env_keys={sorted((gov_step.get('env') or {}).keys())}")
+
     # 9 — provenance manifests match what each build shape runs (WAVE-30137).
     emit = Path(root) / ".buildkite" / "scripts" / "provenance-emit.sh"
     if any(isinstance(c, dict) and c.get("key") == "provenance-emit" for c in walk_steps(steps)):
@@ -918,6 +930,18 @@ def selftest():
               got == want_fail, f"{_failed(rows, '7 ')}")
     rows = _evaluate_yaml(base + shapes["plugin-only"].replace("    if: {IF}\n", ""), FILES)
     t("check 7 plugin-only secrets step with no if rejected", bool(_failed(rows, "7 ")), "")
+
+    # WAVE-30138: governance-enforce on fpc-isolated with no env passes
+    # check 8; the secrets queue or a step env fails it.
+    gov_iso = ("  - label: gov\n    key: governance-enforce\n"
+               "    command: .buildkite/scripts/governance-enforce.sh\n"
+               "    agents: {queue: fpc-isolated}\n")  # guard:allow BK agents/queue keywords in synthetic fixture, not a repo reference
+    rows = _evaluate_yaml(base + gov_iso, gov_files)
+    t("governance-enforce on fpc-isolated passes check 8", not _failed(rows, "8 "), f"{_failed(rows, '8 ')}")
+    rows = _evaluate_yaml(base + gov_main, gov_files)
+    t("governance-enforce on secrets queue fails check 8", bool(_failed(rows, "8 ")), "")
+    rows = _evaluate_yaml(base + gov_iso + "    env: {WAVE_JOB_X: '1'}\n", gov_files)
+    t("governance-enforce with step env fails check 8", bool(_failed(rows, "8 ")), "")
 
     # Check 9: provenance manifests per build shape.
     P_STEPS = yaml.safe_load(
