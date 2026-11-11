@@ -4,9 +4,10 @@
 # the vendored _checks.yml; keep in sync with wave-foundation checks.yml@v1  # guard:allow verified-safe doc example of shared checks repo
 # on every v1.x bump, exactly like the GHA file.
 #
-# Deliberate BK hardenings over the GHA step (same gate, safer plumbing):
+# Deliberate hardenings over a naive grep | echo pipeline (same gate, safer
+# plumbing). Keep in lockstep with .github/workflows/_checks.yml:
 #   * match CONTENT is never printed — only a generic failure message, so
-#     credential values cannot enter Buildkite logs;
+#     credential values cannot enter CI logs;
 #   * the allowlist filter matches the full `pragma: allowlist secret` marker,
 #     not the bare substring;
 #   * pipeline exit statuses are captured: grep 0/1 continue, anything else
