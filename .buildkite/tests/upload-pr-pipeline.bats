@@ -28,6 +28,10 @@ STUB
   mkdir -p "$ORIGIN/.buildkite"
   cp "$REPO_ROOT/.buildkite/upload.sh" "$REPO_ROOT/.buildkite/pipeline.yml" \
     "$REPO_ROOT/.buildkite/pipeline-pr-self-check.yml" "$ORIGIN/.buildkite/"
+  # WAVE-32956: upload.sh runs the default branch's gitleaks guard on untrusted builds.
+  mkdir -p "$ORIGIN/.buildkite/scripts"
+  cp "$REPO_ROOT/.buildkite/scripts/guard-gitleaks.sh" "$ORIGIN/.buildkite/scripts/"
+  cp "$REPO_ROOT/.gitleaks.toml" "$ORIGIN/"
   printf 'x\n' > "$ORIGIN/app.txt"
   _commit "$ORIGIN" base
   git clone -q "$ORIGIN" "$PRDIR"
@@ -48,11 +52,12 @@ _upload() {
     "BUILDKITE_PULL_REQUEST=${PR-206}" \
     "BUILDKITE_PIPELINE_DEFAULT_BRANCH=${DEFAULT_BRANCH-main}" \
     "BUILDKITE_PULL_REQUEST_BASE_BRANCH=${BASE_BRANCH:-main}" \
+    "BUILDKITE_BRANCH=${BRANCH-pr}" \
     sh -c 'cd "$1" && sh .buildkite/upload.sh' _ "$PRDIR"
 }
 
 @test "non-PR build uploads pipeline.yml" {
-  PR=false _upload
+  PR=false BRANCH=main _upload
   [ "$status" -eq 0 ]
   [[ "$output" == *"UPLOAD pipeline upload .buildkite/pipeline.yml"* ]]
 }
