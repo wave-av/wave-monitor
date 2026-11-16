@@ -14,7 +14,9 @@
 # and merge-base against it. For non-PR builds there is no trustworthy base, so
 # we scan the full tree against git's empty-tree object — loud, never a silent
 # empty/partial pass (same fail-loud rule as the GHA indeterminate-base path).
-# The pipeline marks this step pr_only, so the fallback rarely runs.
+# The pipeline runs this step on pull requests and on default-branch builds
+# (WAVE-37296), so every default-branch build takes the full-tree path: there
+# is no push "before" SHA on Buildkite, and HEAD~1 would skip commits.
 #
 # Fork trust: this step consumes a host-injected credential, so it must never
 # run PR-controlled code from a fork WITH the injection. There is NO

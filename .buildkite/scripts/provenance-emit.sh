@@ -14,9 +14,10 @@
 #
 # HONESTY NOTES (v1, all reversible):
 # - The manifest claims exit 0 for every step that ran: this step runs only
-#   when all of them passed. The PR-only governance-enforce step is included
-#   iff BUILDKITE_PULL_REQUEST is a PR number (it is skipped otherwise, and a
-#   skipped step must not be claimed as exited).
+#   when all of them passed. The governance-enforce step is included iff
+#   BUILDKITE_PULL_REQUEST is a PR number or BUILDKITE_BRANCH is the pipeline
+#   default branch (it is skipped otherwise, and a skipped step must not be
+#   claimed as exited).
 # - Self (provenance-emit) is listed exit 0: any DELIVERED artifact implies
 #   the emitter + upload both succeeded, so the step exited 0. Local-only
 #   files from failed runs never leave the ephemeral agent.
@@ -50,13 +51,20 @@ IS_PR="false"
 if [ -n "${BUILDKITE_PULL_REQUEST:-}" ] && [ "${BUILDKITE_PULL_REQUEST:-}" != "false" ]; then
   IS_PR="true"
 fi
+# governance-enforce runs iff the pipeline `if:` held: a PR build, or a build
+# of the pipeline's default branch (WAVE-37296). Mirror that exactly so the
+# manifest never claims a skipped step and never omits one that ran.
+GOV_RAN="$IS_PR"
+if [ -n "${BUILDKITE_BRANCH:-}" ] && [ "${BUILDKITE_BRANCH:-}" = "${BUILDKITE_PIPELINE_DEFAULT_BRANCH:-}" ]; then
+  GOV_RAN="true"
+fi
 
 TMP="$(mktemp -d)"
 STEPS="$TMP/steps.json"
 GUARDS="$TMP/guards.json"
 trap 'rm -rf "$TMP"' EXIT
 
-if [ "$IS_PR" = "true" ]; then
+if [ "$GOV_RAN" = "true" ]; then
   INJECTED="guard-content-policy:GUARD_PRIVATE_REPOS,governance-enforce:GH_PACKAGES_READ_TOKEN"
   cat >"$STEPS" <<'EOF'
 [
