@@ -146,10 +146,15 @@ steps:
     timeout_in_minutes: 5
     retry: *retry-agent-loss
 
+  # Runs on pull requests AND on default-branch builds (WAVE-37296): the
+  # retired Actions governance-enforce.yml also scanned pushes to the default
+  # branch, so a PR-only condition left those pushes unscanned. Default-branch
+  # builds have no PR base; the script then scans the full tree (empty-tree
+  # base), never a partial range. Other non-PR branch builds stay skipped.
   - label: ":shield: governance A_BLOCK enforce"
     key: governance-enforce
     command: .buildkite/scripts/governance-enforce.sh
-    if: build.pull_request.id != null
+    if: build.pull_request.id != null || build.branch == pipeline.default_branch
     agents:  # guard:allow BK pipeline keyword, not a repo reference
       queue: fpc-isolated-secrets
     timeout_in_minutes: 10
